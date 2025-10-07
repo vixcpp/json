@@ -1,6 +1,18 @@
-# ======================================================
-# vix.cpp json module (header-only)
-# ======================================================
+# ====================================================================
+# Vix.cpp — JSON Module (Header-only)
+# ====================================================================
+# Purpose:
+#   - Lightweight JSON facade / adapters.
+#   - Header-only for minimal build overhead.
+#
+# Targets:
+#   - vix_json       (real target)
+#   - Vix::json      (alias, preferred by consumers)
+#
+# Usage:
+#   target_link_libraries(your_target PRIVATE/INTERFACE Vix::json)
+# ====================================================================
+
 cmake_minimum_required(VERSION 3.20)
 project(vix_json VERSION 0.2.0 LANGUAGES CXX)
 
@@ -9,12 +21,13 @@ add_library(Vix::json ALIAS vix_json)
 
 target_compile_features(vix_json INTERFACE cxx_std_20)
 
-# Expose <vix/...> headers si tu places tes headers dans modules/json/include/vix/...
+# Expose public headers so users can do #include <vix/...>
 target_include_directories(vix_json INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
 
+# Examples (opt-in; disabled by default for faster CI)
 option(VIX_JSON_BUILD_EXAMPLES "Build json examples" OFF)
 if (VIX_JSON_BUILD_EXAMPLES)
   add_executable(vix_json_quick     examples/quick_start.cpp)
