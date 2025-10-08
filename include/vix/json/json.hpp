@@ -1,19 +1,15 @@
-#ifndef VIX_JSON_HPP
-#define VIX_JSON_HPP
-
+#pragma once
 #include <nlohmann/json.hpp>
-#include "build.hpp"
-#include "loads.hpp"
-#include "dumps.hpp"
-#include "jpath.hpp"
-#include "convert.hpp"
+#include <vix/json/build.hpp>
+#include <vix/json/loads.hpp>
+#include <vix/json/dumps.hpp>
+#include <vix/json/jpath.hpp>
+#include <vix/json/convert.hpp>
 
 namespace Vix::json
 {
     using Json = nlohmann::json;
-
-    inline auto obj() -> Json { return Json::object(); }
-    inline auto arr() -> Json { return Json::array(); }
+    inline Json obj() { return Json::object(); }
+    inline Json arr() { return Json::array(); }
+    namespace literals = nlohmann::literals;
 }
-
-#endif

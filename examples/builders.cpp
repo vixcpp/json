@@ -4,8 +4,15 @@
 int main()
 {
     using namespace Vix::json;
-    auto user = o("id", 42, "name", "Ada", "tags", a("pro", "admin"));
-    auto conf = kv({{"host", "localhost"}, {"port", 8080}});
-    std::cout << dumps(user) << "\n"
-              << dumps(conf) << "'n";
+
+    auto user = o(
+        "id", 42,
+        "name", "Ada",
+        "tags", a("pro", "admin"));
+
+    auto conf = kv({{"host", "localhost"},
+                    {"port", 8080}});
+
+    std::cout << dumps(user, 2) << "\n"
+              << dumps(conf, 2) << "\n";
 }
