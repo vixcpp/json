@@ -10,21 +10,65 @@
 #include <cstddef>
 #include <charconv>
 
+/**
+ * @file VIX_JPATH_HPP
+ * @brief JSON path navigation and mutation utilities for *Vix.cpp*.
+ *
+ * This header provides a minimal **JPath** implementation to traverse and modify
+ * JSON documents using string paths similar to JavaScript-style expressions.
+ *
+ * ### Supported Syntax
+ * - Dot notation: `"user.name.first"`
+ * - Array indices: `"users[0].email"`
+ * - Quoted keys with brackets: `["complex.key"].value`
+ *
+ * ### Example
+ * @code
+ * using namespace Vix::json;
+ *
+ * Json j = R"({
+ *   "user": { "name": "Ada", "roles": ["admin", "editor"] },
+ *   "settings": { "theme": "dark" }
+ * })"_json;
+ *
+ * const Json* theme = jget(j, "settings.theme");
+ * std::cout << "theme=" << (theme ? theme->get<std::string>() : "N/A") << "\\n";
+ *
+ * // Modify
+ * jset(j, "user.roles[1]", "developer");
+ * jset(j, "user.address.city", "Kampala");
+ *
+ * std::cout << j.dump(2) << "\\n";
+ * @endcode
+ */
+
 namespace Vix::json
 {
+    /// Alias utilitaire pour `nlohmann::json`.
     using Json = nlohmann::json;
 
+    /**
+     * @brief Token struct representing a parsed path segment (key or index).
+     */
     struct Token
     {
+        /// Kind of token.
         enum Kind
         {
-            Key,
-            Index
+            Key,  ///< Object key (string)
+            Index ///< Array index (number)
         } kind{};
+
+        /// Key name (used if kind == Key).
         std::string key;
+
+        /// Array index (used if kind == Index).
         std::size_t index = static_cast<std::size_t>(-1);
     };
 
+    // ---------------------------------------------------------------------
+    // Internal parsing utilities
+    // ---------------------------------------------------------------------
     namespace detail
     {
         inline void skip_spaces(std::string_view s, std::size_t &i) noexcept
@@ -52,7 +96,7 @@ namespace Vix::json
             const char *first = s.data() + i;
             const char *last = s.data() + n;
 
-            if (*first == '+' || *first == '-') // pas d’index signés
+            if (*first == '+' || *first == '-') // indices not signed
                 return false;
 
             unsigned long long tmp = 0;
@@ -69,7 +113,9 @@ namespace Vix::json
             return true;
         }
 
-        // Parse ["..."] (clé littérale)
+        /**
+         * @brief Parse a quoted key inside brackets: ["key name"]
+         */
         inline bool parse_bracket_string_key(std::string_view path, std::size_t &i,
                                              std::string &out_key, std::string &err)
         {
@@ -105,7 +151,7 @@ namespace Vix::json
                         break;
                     default:
                         out_key.push_back(esc);
-                        break; // littéral
+                        break;
                     }
                 }
                 else if (ch == '"')
@@ -133,6 +179,14 @@ namespace Vix::json
             return true;
         }
 
+        /**
+         * @brief Parse a full JPath into tokens, without throwing.
+         *
+         * @param path JPath string (e.g. `"user.roles[0].name"`).
+         * @param out  Vector to store parsed tokens.
+         * @param err  Error message in case of failure.
+         * @return true on success, false otherwise.
+         */
         inline bool tokenize_path_nothrow(std::string_view path, std::vector<Token> &out, std::string &err)
         {
             out.clear();
@@ -172,7 +226,6 @@ namespace Vix::json
 
                 if (ch == '[')
                 {
-                    // cas ["key"]
                     std::size_t look = i + 1;
                     skip_spaces(path, look);
                     if (look < n && path[look] == '"')
@@ -189,7 +242,6 @@ namespace Vix::json
                         continue;
                     }
 
-                    // sinon: index [ 123 ]
                     if (!cur.empty())
                     {
                         out.push_back(Token{Token::Key, cur, static_cast<std::size_t>(-1)});
@@ -218,7 +270,6 @@ namespace Vix::json
                     continue;
                 }
 
-                // caractère normal de clé non-quotée
                 cur.push_back(ch);
                 ++i;
             }
@@ -230,7 +281,17 @@ namespace Vix::json
         }
     } // namespace detail
 
-    // ---------- Tokenize (throws) ----------
+    // ---------------------------------------------------------------------
+    // Public API
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Tokenize a JPath string into structured tokens (throws on error).
+     *
+     * @param path JPath expression.
+     * @return Vector of parsed tokens.
+     * @throws std::runtime_error on invalid syntax.
+     */
     inline std::vector<Token> tokenize_path(std::string_view path)
     {
         std::vector<Token> out;
@@ -240,7 +301,17 @@ namespace Vix::json
         return out;
     }
 
-    // ---------- Lecture (const) ----------
+    // ---------------------------------------------------------------------
+    // jget — read-only JSON pointer
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Safely navigate a JSON tree using a JPath string.
+     *
+     * @param j JSON root.
+     * @param path JPath expression (e.g. `"users[0].name"`).
+     * @return Pointer to the JSON node, or `nullptr` if missing/invalid.
+     */
     inline const Json *jget(const Json &j, std::string_view path)
     {
         const Json *cur = &j;
@@ -262,9 +333,7 @@ namespace Vix::json
             }
             else
             {
-                if (!cur->is_array())
-                    return nullptr;
-                if (t.index >= cur->size())
+                if (!cur->is_array() || t.index >= cur->size())
                     return nullptr;
                 cur = &((*cur)[t.index]);
             }
@@ -272,10 +341,26 @@ namespace Vix::json
         return cur;
     }
 
-    // Wrappers const char* (pas de surcharge std::string pour éviter l’ambiguïté)
-    inline const Json *jget(const Json &j, const char *path) { return jget(j, std::string_view{path}); }
+    /// @overload for const char* paths.
+    inline const Json *jget(const Json &j, const char *path)
+    {
+        return jget(j, std::string_view{path});
+    }
 
-    // ---------- Mutateur (création auto) ----------
+    // ---------------------------------------------------------------------
+    // jget — mutable variant (creates intermediate nodes)
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Obtain a mutable reference to a node, creating objects/arrays as needed.
+     *
+     * Missing keys or array slots are automatically created as `null` or empty containers.
+     *
+     * @param j JSON root.
+     * @param path JPath expression.
+     * @return Pointer to the created or existing JSON node.
+     * @throws std::runtime_error on syntax error.
+     */
     inline Json *jget(Json &j, std::string_view path)
     {
         Json *cur = &j;
@@ -304,9 +389,25 @@ namespace Vix::json
         return cur;
     }
 
-    inline Json *jget(Json &j, const char *path) { return jget(j, std::string_view{path}); }
+    /// @overload for const char* paths.
+    inline Json *jget(Json &j, const char *path)
+    {
+        return jget(j, std::string_view{path});
+    }
 
-    // ---------- jset ----------
+    // ---------------------------------------------------------------------
+    // jset — convenience mutator
+    // ---------------------------------------------------------------------
+
+    /**
+     * @brief Set a JSON value at the specified path (auto-creates intermediate nodes).
+     *
+     * @tparam T Value type (convertible to JSON).
+     * @param j JSON root to modify.
+     * @param path JPath expression.
+     * @param v Value to assign.
+     * @return true if successful, false if a parsing or type error occurred.
+     */
     template <class T>
     inline bool jset(Json &j, std::string_view path, T &&v)
     {
@@ -321,6 +422,7 @@ namespace Vix::json
         }
     }
 
+    /// @overload for const char* paths.
     template <class T>
     inline bool jset(Json &j, const char *path, T &&v)
     {
