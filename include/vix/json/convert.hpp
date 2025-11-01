@@ -22,7 +22,7 @@
  *
  * ### Example
  * @code
- * using namespace Vix::json;
+ * using namespace vix::json;
  *
  * Json j = R"({
  *   "user": {"id": 42, "name": "Ada"},
@@ -46,7 +46,7 @@
  * @endcode
  */
 
-namespace Vix::json
+namespace vix::json
 {
     /// Alias utilitaire vers `nlohmann::json`.
     using Json = nlohmann::json;
@@ -246,6 +246,6 @@ namespace Vix::json
         }
     }
 
-} // namespace Vix::json
+} // namespace vix::json
 
 #endif // VIX_CONVERT_HPP

@@ -27,7 +27,7 @@
  *
  * ### Example
  * @code
- * using namespace Vix::json;
+ * using namespace vix::json;
  *
  * // Parse from string
  * auto j = loads(R"({"id": 1, "name": "Softadastra"})");
@@ -50,7 +50,7 @@
  * @endcode
  */
 
-namespace Vix::json
+namespace vix::json
 {
     /// Alias utilitaire pour `nlohmann::json`.
     using Json = nlohmann::json;
@@ -191,6 +191,6 @@ namespace Vix::json
         return try_load_file(fs::path{path});
     }
 
-} // namespace Vix::json
+} // namespace vix::json
 
 #endif // VIX_LOADS_HPP

@@ -31,10 +31,10 @@
  * }
  * ```
  *
- * @see Vix::json::jget
- * @see Vix::json::jset
- * @see Vix::json::tokenize_path
- * @see Vix::json::dumps
+ * @see vix::json::jget
+ * @see vix::json::jset
+ * @see vix::json::tokenize_path
+ * @see vix::json::dumps
  */
 
 #include <vix/json/json.hpp>
@@ -42,7 +42,7 @@
 
 int main()
 {
-    using namespace Vix::json;
+    using namespace vix::json;
 
     // ---------------------------------------------------------------------
     // Start with an empty JSON object

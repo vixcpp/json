@@ -24,7 +24,7 @@
  *
  * ### Example
  * @code
- * using namespace Vix::json;
+ * using namespace vix::json;
  *
  * Json j = R"({
  *   "user": { "name": "Ada", "roles": ["admin", "editor"] },
@@ -42,7 +42,7 @@
  * @endcode
  */
 
-namespace Vix::json
+namespace vix::json
 {
     /// Alias utilitaire pour `nlohmann::json`.
     using Json = nlohmann::json;
@@ -429,6 +429,6 @@ namespace Vix::json
         return jset(j, std::string_view{path}, std::forward<T>(v));
     }
 
-} // namespace Vix::json
+} // namespace vix::json
 
 #endif // VIX_JPATH_HPP

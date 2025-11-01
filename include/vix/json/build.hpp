@@ -22,7 +22,7 @@
  *
  * ### Example
  * @code
- * using namespace Vix::json;
+ * using namespace vix::json;
  *
  * Json user = o(
  *     "id", 42,
@@ -46,7 +46,7 @@
  * @note This header is header-only and has no dependencies other than *nlohmann/json*.
  */
 
-namespace Vix::json
+namespace vix::json
 {
     /**
      * @brief Alias to simplify use of nlohmann::json.
@@ -173,6 +173,6 @@ namespace Vix::json
         return j;
     }
 
-} // namespace Vix::json
+} // namespace vix::json
 
 #endif // VIX_BUILD_HPP

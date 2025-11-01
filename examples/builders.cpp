@@ -28,10 +28,10 @@
  * }
  * ```
  *
- * @see Vix::json::o
- * @see Vix::json::a
- * @see Vix::json::kv
- * @see Vix::json::dumps
+ * @see vix::json::o
+ * @see vix::json::a
+ * @see vix::json::kv
+ * @see vix::json::dumps
  */
 
 #include <vix/json/json.hpp>
@@ -39,7 +39,7 @@
 
 int main()
 {
-    using namespace Vix::json;
+    using namespace vix::json;
 
     // ---------------------------------------------------------------------
     // Build a JSON object using `o()` and an array using `a()`

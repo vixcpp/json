@@ -23,7 +23,7 @@
  * ### Example
  * @code
  * #include <vix/json.hpp>
- * using namespace Vix::json;
+ * using namespace vix::json;
  *
  * int main() {
  *     // --- Build JSON programmatically ---
@@ -45,7 +45,7 @@
  * @endcode
  */
 
-namespace Vix::json
+namespace vix::json
 {
     /// Alias principal vers `nlohmann::json`, pour compatibilité complète.
     using Json = nlohmann::json;
@@ -78,7 +78,7 @@ namespace Vix::json
      *
      * Allows direct usage of JSON string literals:
      * @code
-     * using namespace Vix::json::literals;
+     * using namespace vix::json::literals;
      * Json j = R"({"a": 1, "b": 2})"_json;
      * @endcode
      */

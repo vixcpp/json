@@ -37,7 +37,7 @@ designed for simplicity and expressiveness. It adds helpers for:
 #include <vix/json/json.hpp>
 #include <iostream>
 
-using namespace Vix::json;
+using namespace vix::json;
 
 int main() {
     auto user = o(
@@ -160,7 +160,7 @@ This module is automatically included when you build the umbrella **Vix.cpp** pr
 
 ```cpp
 #include <vix/json/json.hpp>
-using namespace Vix::json;
+using namespace vix::json;
 
 auto j = o("framework", "Vix.cpp", "version", "1.7.0");
 ```

@@ -23,10 +23,10 @@
  * }
  * ```
  *
- * @see Vix::json::loads
- * @see Vix::json::dump_file
- * @see Vix::json::load_file
- * @see Vix::json::dumps
+ * @see vix::json::loads
+ * @see vix::json::dump_file
+ * @see vix::json::load_file
+ * @see vix::json::dumps
  */
 
 #include <vix/json/json.hpp>
@@ -34,7 +34,7 @@
 
 int main()
 {
-    using namespace Vix::json;
+    using namespace vix::json;
 
     // ---------------------------------------------------------------------
     // Parse a JSON string into a Json object
