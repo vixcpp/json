@@ -21,7 +21,7 @@ cmake_minimum_required(VERSION 3.20)
 #       target_link_libraries(app PRIVATE vix::json)
 # ====================================================================
 
-project(vix_json VERSION 1.3.1 LANGUAGES CXX)
+project(vix_json VERSION 1.4.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(FetchContent)
