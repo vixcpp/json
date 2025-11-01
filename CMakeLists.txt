@@ -29,8 +29,6 @@ include(FetchContent)
 # ---------------- Target (header-only) ----------------
 add_library(vix_json INTERFACE)
 add_library(vix::json ALIAS vix_json)
-add_library(Vix::json ALIAS vix_json)
-
 target_compile_features(vix_json INTERFACE cxx_std_20)
 
 # Public include layout to allow: #include <vix/json/...>
