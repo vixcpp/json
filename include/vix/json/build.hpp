@@ -52,6 +52,7 @@ namespace vix::json
      * @brief Alias to simplify use of nlohmann::json.
      */
     using Json = nlohmann::json;
+    using OrderedJson = nlohmann::ordered_json;
 
     // ---------------------------------------------------------------------
     // Internal utilities (not for direct use)
