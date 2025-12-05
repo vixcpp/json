@@ -81,11 +81,10 @@ namespace vix::json
          */
         template <class K, class V, class... Rest,
                   std::enable_if_t<is_key_like<K>::value, int> = 0>
-        inline void put_pairs(Json &j, K &&k, V &&v, Rest &&...rest)
+        inline void put_pairs(OrderedJson &j, K &&k, V &&v, Rest &&...rest)
         {
-            // Force key as string to avoid ambiguity
             const std::string key{std::string_view(std::forward<K>(k))};
-            j.emplace(key, Json(std::forward<V>(v)));
+            j.emplace(key, OrderedJson(std::forward<V>(v)));
             if constexpr (sizeof...(rest) > 0)
                 put_pairs(j, std::forward<Rest>(rest)...);
         }
@@ -111,11 +110,11 @@ namespace vix::json
      * @endcode
      */
     template <class... Args>
-    inline Json o(Args &&...args)
+    inline OrderedJson o(Args &&...args)
     {
         static_assert(sizeof...(args) % 2 == 0,
                       "json::o requires an even number of args: (k1,v1,k2,v2,...)");
-        Json j = Json::object();
+        OrderedJson j = OrderedJson::object();
         if constexpr (sizeof...(args) > 0)
             detail::put_pairs(j, std::forward<Args>(args)...);
         return j;
