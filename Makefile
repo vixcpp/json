@@ -1,100 +1,122 @@
-# =========================
-# Vix.cpp — CLI: Release Makefile (safe & linear)
-# =========================
+VERSION ?= v0.1.0
+BRANCH_DEV  = dev
+BRANCH_MAIN = main
+RETRIES ?= 3
+SLEEP   ?= 2
 
-VERSION      ?= v0.1.0
-REMOTE        = origin
-BRANCH_DEV    = dev
-BRANCH_MAIN   = main
-
-.PHONY: help status guard-clean guard-gh sync ffmerge merge-or-pr changelog commit push merge tag release test
+.PHONY: help release commit push push_main merge tag test changelog return_dev
 
 help:
 	@echo "Available commands:"
-	@echo "  make status                 - Show divergence between $(REMOTE)/$(BRANCH_MAIN) and $(REMOTE)/$(BRANCH_DEV)"
-	@echo "  make sync                   - Rebase $(BRANCH_DEV) on $(REMOTE)/$(BRANCH_MAIN) and align local $(BRANCH_MAIN)"
-	@echo "  make ffmerge                - Fast-forward merge $(BRANCH_DEV) -> $(BRANCH_MAIN) and push"
-	@echo "  make merge-or-pr            - FF merge if possible; otherwise open a PR (requires gh)"
-	@echo "  make changelog              - Update CHANGELOG.md using script"
-	@echo "  make commit                 - Commit local changes on $(BRANCH_DEV)"
-	@echo "  make push                   - Push $(BRANCH_DEV)"
-	@echo "  make tag VERSION=vX.Y.Z     - Create and push annotated tag"
-	@echo "  make release VERSION=vX.Y.Z - changelog + commit + push + sync + ffmerge + tag"
-	@echo "  make test                   - Run tests (ctest)"
+	@echo "  make commit                    - Add and commit all files (on $(BRANCH_DEV) branch)"
+	@echo "  make push                      - Push the $(BRANCH_DEV) branch (with retry)"
+	@echo "  make push_main                 - Push the $(BRANCH_MAIN) branch (with retry)"
+	@echo "  make merge                     - Merge $(BRANCH_DEV) into $(BRANCH_MAIN) and push"
+	@echo "  make tag VERSION=vX.Y.Z        - Create and push a Git tag (default: $(VERSION), with retry)"
+	@echo "  make release VERSION=vX.Y.Z    - Full release workflow"
+	@echo "  make test                      - Run tests"
+	@echo "  make changelog                 - Update CHANGELOG.md"
 
-status:
-	@git fetch $(REMOTE) --tags
-	@echo "== Divergence =="
-	@echo "* Commits on $(BRANCH_DEV) not in $(BRANCH_MAIN):"
-	@git log --oneline $(REMOTE)/$(BRANCH_MAIN)..$(REMOTE)/$(BRANCH_DEV) || true
-	@echo
-	@echo "* Commits on $(BRANCH_MAIN) not in $(BRANCH_DEV):"
-	@git log --oneline $(REMOTE)/$(BRANCH_DEV)..$(REMOTE)/$(BRANCH_MAIN) || true
-	@echo
-	@echo "== Heads =="
-	@git rev-parse --short $(REMOTE)/$(BRANCH_MAIN)
-	@git rev-parse --short $(REMOTE)/$(BRANCH_DEV)
-
-guard-clean:
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "❌ Working tree not clean. Commit or stash first."; \
-		git status --porcelain; \
-		exit 1; \
+return_dev:
+	@current=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$current" != "$(BRANCH_DEV)" ]; then \
+		echo "↩️  Returning to $(BRANCH_DEV)..."; \
+		git checkout $(BRANCH_DEV); \
 	fi
 
-guard-gh:
-	@command -v gh >/dev/null 2>&1 || { echo "❌ GitHub CLI (gh) not found. Install gh or use 'make ffmerge'."; exit 1; }
-
-sync: ## rebase dev on origin/main; align local main with origin/main
-	@git fetch $(REMOTE) --tags
-	@git switch $(BRANCH_DEV)
-	@git rebase $(REMOTE)/$(BRANCH_MAIN) || { echo "❌ Rebase failed. Resolve conflicts then 'git rebase --continue'."; exit 1; }
-	@git push --force-with-lease $(REMOTE) $(BRANCH_DEV)
-	@git switch $(BRANCH_MAIN)
-	@git reset --hard $(REMOTE)/$(BRANCH_MAIN)
-
-ffmerge: ## fast-forward only merge dev -> main
-	@git switch $(BRANCH_MAIN)
-	@git merge --ff-only $(BRANCH_DEV)
-	@git push $(REMOTE) $(BRANCH_MAIN)
-
-merge-or-pr: ## ff-only else open PR
-	@git switch $(BRANCH_MAIN)
-	@git merge --ff-only $(BRANCH_DEV) || ( \
-		echo "ℹ️  FF impossible, creating PR…"; \
-		$(MAKE) guard-gh; \
-		gh pr create -B $(BRANCH_MAIN) -H $(BRANCH_DEV) -t "Merge $(BRANCH_DEV) into $(BRANCH_MAIN)" -b "Auto-PR from Makefile (FF not possible)"; \
-	)
-
-changelog:
-	bash scripts/update_changelog.sh
-
 commit:
-	@git switch $(BRANCH_DEV)
+	@git checkout $(BRANCH_DEV)
 	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "📝 Committing changes…"; \
+		echo "📝 Committing changes on $(BRANCH_DEV)..."; \
 		git add .; \
 		git commit -m "chore(release): prepare $(VERSION)"; \
 	else \
-		echo "✅ Nothing to commit."; \
+		echo "✅ Nothing to commit on $(BRANCH_DEV)."; \
 	fi
+	@$(MAKE) return_dev
 
 push:
-	@git push $(REMOTE) $(BRANCH_DEV)
+	@echo "⬆️  Pushing $(BRANCH_DEV) to origin (with retry, $(RETRIES)x max)..."
+	@git checkout $(BRANCH_DEV)
+	@n=0; \
+	until [ $$n -ge $(RETRIES) ]; do \
+	  if git push origin $(BRANCH_DEV); then \
+	    echo "✅ Push of $(BRANCH_DEV) succeeded."; \
+	    break; \
+	  fi; \
+	  n=$$((n+1)); \
+	  echo "⚠️  Push failed. Retry $$n/$(RETRIES) in $(SLEEP)s..."; \
+	  sleep $(SLEEP); \
+	done; \
+	if [ $$n -ge $(RETRIES) ]; then \
+	  echo "❌ Push of $(BRANCH_DEV) failed after $(RETRIES) attempts."; \
+	  exit 1; \
+	fi
+	@$(MAKE) return_dev
+
+push_main:
+	@echo "⬆️  Pushing $(BRANCH_MAIN) to origin (with retry, $(RETRIES)x max)..."
+	@git checkout $(BRANCH_MAIN)
+	@n=0; \
+	until [ $$n -ge $(RETRIES) ]; do \
+	  if git push origin $(BRANCH_MAIN); then \
+	    echo "✅ Push of $(BRANCH_MAIN) succeeded."; \
+	    break; \
+	  fi; \
+	  n=$$((n+1)); \
+	  echo "⚠️  Push failed. Retry $$n/$(RETRIES) in $(SLEEP)s..."; \
+	  sleep $(SLEEP); \
+	done; \
+	if [ $$n -ge $(RETRIES) ]; then \
+	  echo "❌ Push of $(BRANCH_MAIN) failed after $(RETRIES) attempts."; \
+	  exit 1; \
+	fi
+	@$(MAKE) return_dev
+
+merge:
+	@echo "🔀 Merging $(BRANCH_DEV) into $(BRANCH_MAIN)..."
+	@git checkout $(BRANCH_MAIN)
+	@git merge --no-ff --no-edit $(BRANCH_DEV)
+	@$(MAKE) push_main
+	@$(MAKE) return_dev
 
 tag:
 	@if git rev-parse $(VERSION) >/dev/null 2>&1; then \
 		echo "❌ Tag $(VERSION) already exists."; \
 		exit 1; \
 	else \
-		echo "🏷️  Creating annotated tag $(VERSION)…"; \
-		git tag -a $(VERSION) -m "Release $(VERSION)"; \
-		git push $(REMOTE) $(VERSION); \
+		echo "🏷️  Creating annotated tag $(VERSION)..."; \
+		git tag -a $(VERSION) -m "Release version $(VERSION)"; \
+		echo "⬆️  Pushing tag $(VERSION) (with retry)..."; \
+		n=0; \
+		until [ $$n -ge $(RETRIES) ]; do \
+		  if git push origin $(VERSION); then \
+		    echo "✅ Tag $(VERSION) pushed successfully."; \
+		    break; \
+		  fi; \
+		  n=$$((n+1)); \
+		  echo "⚠️  Push tag failed. Retry $$n/$(RETRIES) in $(SLEEP)s..."; \
+		  sleep $(SLEEP); \
+		done; \
+		if [ $$n -ge $(RETRIES) ]; then \
+		  echo "❌ Pushing tag $(VERSION) failed after $(RETRIES) attempts."; \
+		  exit 1; \
+		fi; \
 	fi
+	@$(MAKE) return_dev
 
-release: changelog commit push sync ffmerge tag
-	@echo "✅ Release pipeline done: $(VERSION)"
+release:
+	@$(MAKE) changelog
+	@$(MAKE) commit
+	@$(MAKE) push
+	@$(MAKE) merge
+	@$(MAKE) tag VERSION=$(VERSION)
+	@$(MAKE) return_dev
 
 test:
-	@cd build && ctest --output-on-failure || true
+	cd build && ctest --output-on-failure
+
+changelog:
+	bash scripts/update_changelog.sh
+	@$(MAKE) return_dev
 
