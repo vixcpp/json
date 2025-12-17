@@ -33,13 +33,9 @@ target_compile_features(vix_json INTERFACE cxx_std_20)
 
 # Public include layout to allow: #include <vix/json/...>
 target_include_directories(vix_json INTERFACE
-  $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>)
-
-if (NOT TARGET nlohmann_json::nlohmann_json)
-  add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
-  target_include_directories(nlohmann_json::nlohmann_json INTERFACE
-    $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>)
-endif()
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 
 # ---------------- Dependency: nlohmann_json ----------------
 set(_VIX_JSON_PROVIDER "none")
@@ -55,6 +51,7 @@ else()
     set(_VIX_JSON_PROVIDER "nlohmann_json (MODULE)")
   else()
     message(STATUS "[json] nlohmann_json not found — fetching header-only fallback")
+
     FetchContent_Declare(
       nlohmann_json_fallback
       GIT_REPOSITORY https://github.com/nlohmann/json.git
@@ -63,13 +60,12 @@ else()
     )
     FetchContent_MakeAvailable(nlohmann_json_fallback)
 
-    target_include_directories(vix_json INTERFACE
-      $<BUILD_INTERFACE:${nlohmann_json_SOURCE_DIR}/single_include>)
-
+    # Create imported target (so consumers can always link nlohmann_json::nlohmann_json)
     if (NOT TARGET nlohmann_json::nlohmann_json)
       add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
       target_include_directories(nlohmann_json::nlohmann_json INTERFACE
-        $<BUILD_INTERFACE:${nlohmann_json_SOURCE_DIR}/single_include>)
+        $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>
+      )
     endif()
 
     target_link_libraries(vix_json INTERFACE nlohmann_json::nlohmann_json)
@@ -100,11 +96,13 @@ if (VIX_JSON_BUILD_EXAMPLES)
 endif()
 
 # ---------------- Install / Export (umbrella) ----------------
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+install(DIRECTORY include/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
+)
 
 install(TARGETS vix_json
-  EXPORT  VixTargets                 # <- join umbrella export-set
+  EXPORT VixTargets   # <- join umbrella export-set
 )
 
 # ---------------- Status ----------------
@@ -114,4 +112,3 @@ message(STATUS "Provider: ${_VIX_JSON_PROVIDER}")
 message(STATUS "Examples: ${VIX_JSON_BUILD_EXAMPLES}")
 message(STATUS "Install include dir: ${CMAKE_INSTALL_INCLUDEDIR}")
 message(STATUS "------------------------------------------------------")
-
