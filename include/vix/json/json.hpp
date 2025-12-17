@@ -49,6 +49,7 @@ namespace vix::json
 {
     /// Alias principal vers `nlohmann::json`, pour compatibilité complète.
     using Json = nlohmann::json;
+    using OrderedJson = nlohmann::ordered_json;
 
     /**
      * @brief Create an empty JSON object.
