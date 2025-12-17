@@ -33,9 +33,13 @@ target_compile_features(vix_json INTERFACE cxx_std_20)
 
 # Public include layout to allow: #include <vix/json/...>
 target_include_directories(vix_json INTERFACE
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
+  $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>)
+
+if (NOT TARGET nlohmann_json::nlohmann_json)
+  add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
+  target_include_directories(nlohmann_json::nlohmann_json INTERFACE
+    $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>)
+endif()
 
 # ---------------- Dependency: nlohmann_json ----------------
 set(_VIX_JSON_PROVIDER "none")
