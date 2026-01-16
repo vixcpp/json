@@ -1,4 +1,18 @@
-#pragma once
+/**
+ *
+ *  @file json.hpp
+ *  @author Gaspard Kirira
+ *
+ *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  https://github.com/vixcpp/vix
+ *  Use of this source code is governed by a MIT license
+ *  that can be found in the License file.
+ *
+ *  Vix.cpp
+ */
+#ifndef VIX_MODULE_JSON_HPP
+#define VIX_MODULE_JSON_HPP
+
 #include <nlohmann/json.hpp>
 #include <vix/json/build.hpp>
 #include <vix/json/loads.hpp>
@@ -47,41 +61,43 @@
 
 namespace vix::json
 {
-    /// Alias principal vers `nlohmann::json`, pour compatibilité complète.
-    using Json = nlohmann::json;
-    using OrderedJson = nlohmann::ordered_json;
+  /// Alias principal vers `nlohmann::json`, pour compatibilité complète.
+  using Json = nlohmann::json;
+  using OrderedJson = nlohmann::ordered_json;
 
-    /**
-     * @brief Create an empty JSON object.
-     * @return A new `Json` of type object (`{}`).
-     *
-     * @code
-     * Json j = obj();
-     * j["key"] = "value";
-     * @endcode
-     */
-    inline Json obj() { return Json::object(); }
+  /**
+   * @brief Create an empty JSON object.
+   * @return A new `Json` of type object (`{}`).
+   *
+   * @code
+   * Json j = obj();
+   * j["key"] = "value";
+   * @endcode
+   */
+  inline Json obj() { return Json::object(); }
 
-    /**
-     * @brief Create an empty JSON array.
-     * @return A new `Json` of type array (`[]`).
-     *
-     * @code
-     * Json j = arr();
-     * j.push_back(42);
-     * j.push_back("hello");
-     * @endcode
-     */
-    inline Json arr() { return Json::array(); }
+  /**
+   * @brief Create an empty JSON array.
+   * @return A new `Json` of type array (`[]`).
+   *
+   * @code
+   * Json j = arr();
+   * j.push_back(42);
+   * j.push_back("hello");
+   * @endcode
+   */
+  inline Json arr() { return Json::array(); }
 
-    /**
-     * @brief Import the `"_json"` literal namespace from *nlohmann::json*.
-     *
-     * Allows direct usage of JSON string literals:
-     * @code
-     * using namespace vix::json::literals;
-     * Json j = R"({"a": 1, "b": 2})"_json;
-     * @endcode
-     */
-    namespace literals = nlohmann::literals;
+  /**
+   * @brief Import the `"_json"` literal namespace from *nlohmann::json*.
+   *
+   * Allows direct usage of JSON string literals:
+   * @code
+   * using namespace vix::json::literals;
+   * Json j = R"({"a": 1, "b": 2})"_json;
+   * @endcode
+   */
+  namespace literals = nlohmann::literals;
 }
+
+#endif

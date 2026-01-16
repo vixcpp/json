@@ -1,3 +1,15 @@
+/**
+ *
+ *  @file loads.hpp
+ *  @author Gaspard Kirira
+ *
+ *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  https://github.com/vixcpp/vix
+ *  Use of this source code is governed by a MIT license
+ *  that can be found in the License file.
+ *
+ *  Vix.cpp
+ */
 #ifndef VIX_LOADS_HPP
 #define VIX_LOADS_HPP
 
@@ -52,144 +64,121 @@
 
 namespace vix::json
 {
-    /// Alias utilitaire pour `nlohmann::json`.
-    using Json = nlohmann::json;
+  using Json = nlohmann::json;
+  namespace fs = std::filesystem;
 
-    /// Alias du namespace `std::filesystem` pour concision.
-    namespace fs = std::filesystem;
+  /**
+   * @brief Parse a JSON document from a `std::string_view`.
+   *
+   * This function throws if the input is not valid JSON.
+   *
+   * @param s UTF-8 JSON text.
+   * @return Parsed JSON value.
+   * @throws nlohmann::json::parse_error if the content is invalid.
+   */
+  inline Json loads(std::string_view s)
+  {
+    return Json::parse(s);
+  }
 
-    // ---------------------------------------------------------------------
-    // loads — from string (throws)
-    // ---------------------------------------------------------------------
-
-    /**
-     * @brief Parse a JSON document from a `std::string_view`.
-     *
-     * This function throws if the input is not valid JSON.
-     *
-     * @param s UTF-8 JSON text.
-     * @return Parsed JSON value.
-     * @throws nlohmann::json::parse_error if the content is invalid.
-     */
-    inline Json loads(std::string_view s)
+  /**
+   * @brief Parse JSON from string, returning `std::optional` on error.
+   *
+   * @param s UTF-8 JSON text.
+   * @return Parsed JSON or `std::nullopt` if parsing fails.
+   */
+  inline std::optional<Json> try_loads(std::string_view s) noexcept
+  {
+    try
     {
-        return Json::parse(s);
+      return Json::parse(s);
+    }
+    catch (...)
+    {
+      return std::nullopt;
+    }
+  }
+
+  /**
+   * @brief Read and parse a JSON file into a `Json` object.
+   *
+   * This version throws on I/O or parse error.
+   *
+   * @param path Filesystem path to a `.json` file.
+   * @return Parsed JSON document.
+   * @throws std::runtime_error if the file cannot be opened.
+   * @throws nlohmann::json::parse_error if the file content is invalid JSON.
+   *
+   * @code
+   * Json conf = load_file("config.json");
+   * std::cout << conf.dump(2);
+   * @endcode
+   */
+  inline Json load_file(const fs::path &path)
+  {
+    std::ifstream ifs(path, std::ios::binary);
+    if (!ifs)
+      throw std::runtime_error("Cannot open JSON file: " + path.string());
+
+    // Read entire file into buffer
+    std::string buf;
+    ifs.seekg(0, std::ios::end);
+    const std::streampos sz = ifs.tellg();
+    if (sz > 0)
+    {
+      buf.resize(static_cast<std::size_t>(sz));
+      ifs.seekg(0, std::ios::beg);
+      ifs.read(buf.data(), sz);
     }
 
-    // ---------------------------------------------------------------------
-    // try_loads — from string (safe)
-    // ---------------------------------------------------------------------
+    return Json::parse(buf);
+  }
 
-    /**
-     * @brief Parse JSON from string, returning `std::optional` on error.
-     *
-     * @param s UTF-8 JSON text.
-     * @return Parsed JSON or `std::nullopt` if parsing fails.
-     */
-    inline std::optional<Json> try_loads(std::string_view s) noexcept
+  /**
+   * @brief Safe version of `load_file()`.
+   *
+   * Returns `std::nullopt` on error (I/O or invalid JSON).
+   *
+   * @param path Path to the file to parse.
+   * @return `std::optional<Json>` — empty on failure.
+   *
+   * @code
+   * if (auto cfg = try_load_file("config.json")) {
+   *     std::cout << (*cfg)["app"] << std::endl;
+   * } else {
+   *     std::cerr << "Failed to load config" << std::endl;
+   * }
+   * @endcode
+   */
+  inline std::optional<Json> try_load_file(const fs::path &path) noexcept
+  {
+    try
     {
-        try
-        {
-            return Json::parse(s);
-        }
-        catch (...)
-        {
-            return std::nullopt;
-        }
+      return load_file(path);
     }
-
-    // ---------------------------------------------------------------------
-    // load_file — from file (throws)
-    // ---------------------------------------------------------------------
-
-    /**
-     * @brief Read and parse a JSON file into a `Json` object.
-     *
-     * This version throws on I/O or parse error.
-     *
-     * @param path Filesystem path to a `.json` file.
-     * @return Parsed JSON document.
-     * @throws std::runtime_error if the file cannot be opened.
-     * @throws nlohmann::json::parse_error if the file content is invalid JSON.
-     *
-     * @code
-     * Json conf = load_file("config.json");
-     * std::cout << conf.dump(2);
-     * @endcode
-     */
-    inline Json load_file(const fs::path &path)
+    catch (...)
     {
-        std::ifstream ifs(path, std::ios::binary);
-        if (!ifs)
-            throw std::runtime_error("Cannot open JSON file: " + path.string());
-
-        // Read entire file into buffer
-        std::string buf;
-        ifs.seekg(0, std::ios::end);
-        const std::streampos sz = ifs.tellg();
-        if (sz > 0)
-        {
-            buf.resize(static_cast<std::size_t>(sz));
-            ifs.seekg(0, std::ios::beg);
-            ifs.read(buf.data(), sz);
-        }
-
-        return Json::parse(buf);
+      return std::nullopt;
     }
+  }
 
-    // ---------------------------------------------------------------------
-    // try_load_file — from file (safe)
-    // ---------------------------------------------------------------------
+  /// @overload for C-string input.
+  inline Json loads(const char *s) { return loads(std::string_view{s}); }
 
-    /**
-     * @brief Safe version of `load_file()`.
-     *
-     * Returns `std::nullopt` on error (I/O or invalid JSON).
-     *
-     * @param path Path to the file to parse.
-     * @return `std::optional<Json>` — empty on failure.
-     *
-     * @code
-     * if (auto cfg = try_load_file("config.json")) {
-     *     std::cout << (*cfg)["app"] << std::endl;
-     * } else {
-     *     std::cerr << "Failed to load config" << std::endl;
-     * }
-     * @endcode
-     */
-    inline std::optional<Json> try_load_file(const fs::path &path) noexcept
-    {
-        try
-        {
-            return load_file(path);
-        }
-        catch (...)
-        {
-            return std::nullopt;
-        }
-    }
+  /// @overload for C-string input, safe version.
+  inline std::optional<Json> try_loads(const char *s) noexcept
+  {
+    return try_loads(std::string_view{s});
+  }
 
-    // ---------------------------------------------------------------------
-    // Convenience overloads (const char*)
-    // ---------------------------------------------------------------------
+  /// @overload for C-string file path.
+  inline Json load_file(const char *path) { return load_file(fs::path{path}); }
 
-    /// @overload for C-string input.
-    inline Json loads(const char *s) { return loads(std::string_view{s}); }
-
-    /// @overload for C-string input, safe version.
-    inline std::optional<Json> try_loads(const char *s) noexcept
-    {
-        return try_loads(std::string_view{s});
-    }
-
-    /// @overload for C-string file path.
-    inline Json load_file(const char *path) { return load_file(fs::path{path}); }
-
-    /// @overload for C-string file path, safe version.
-    inline std::optional<Json> try_load_file(const char *path) noexcept
-    {
-        return try_load_file(fs::path{path});
-    }
+  /// @overload for C-string file path, safe version.
+  inline std::optional<Json> try_load_file(const char *path) noexcept
+  {
+    return try_load_file(fs::path{path});
+  }
 
 } // namespace vix::json
 

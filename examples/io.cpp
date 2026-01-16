@@ -1,5 +1,14 @@
 /**
- * @file json_loads_dumps_demo.cpp
+ *
+ *  @file io.cpp
+ *  @author Gaspard Kirira
+ *
+ *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  https://github.com/vixcpp/vix
+ *  Use of this source code is governed by a MIT license
+ *  that can be found in the License file.
+ *
+ *  Vix.cpp
  * @brief Demonstrates parsing, writing, and reloading JSON with Vix.cpp helpers.
  *
  * This example shows how to:
@@ -34,25 +43,25 @@
 
 int main()
 {
-    using namespace vix::json;
+  using namespace vix::json;
 
-    // ---------------------------------------------------------------------
-    // Parse a JSON string into a Json object
-    // ---------------------------------------------------------------------
-    auto j = loads(R"({"a":1,"b":[10,20]})");
+  // ---------------------------------------------------------------------
+  // Parse a JSON string into a Json object
+  // ---------------------------------------------------------------------
+  auto j = loads(R"({"a":1,"b":[10,20]})");
 
-    // ---------------------------------------------------------------------
-    // Write JSON to disk safely (atomic write using .tmp)
-    // ---------------------------------------------------------------------
-    dump_file("out.json", j, 2);
+  // ---------------------------------------------------------------------
+  // Write JSON to disk safely (atomic write using .tmp)
+  // ---------------------------------------------------------------------
+  dump_file("out.json", j, 2);
 
-    // ---------------------------------------------------------------------
-    // Read the same file back into a new Json object
-    // ---------------------------------------------------------------------
-    auto j2 = load_file("out.json");
+  // ---------------------------------------------------------------------
+  // Read the same file back into a new Json object
+  // ---------------------------------------------------------------------
+  auto j2 = load_file("out.json");
 
-    // ---------------------------------------------------------------------
-    // Pretty-print the reloaded JSON to stdout
-    // ---------------------------------------------------------------------
-    std::cout << dumps(j2, 2) << "\n";
+  // ---------------------------------------------------------------------
+  // Pretty-print the reloaded JSON to stdout
+  // ---------------------------------------------------------------------
+  std::cout << dumps(j2, 2) << "\n";
 }
