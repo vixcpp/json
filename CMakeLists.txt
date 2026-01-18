@@ -1,5 +1,12 @@
-cmake_minimum_required(VERSION 3.20)
 
+#  @file CMakeLists.cpp
+#  @author Gaspard Kirira
+#
+#  Copyright 2025, Gaspard Kirira.  All rights reserved.
+#  https://github.com/vixcpp/vix
+#  Use of this source code is governed by a MIT license
+#  that can be found in the License file.
+#
 # ====================================================================
 # Vix.cpp — JSON Module (Header-only, Umbrella-integrated)
 # ====================================================================
@@ -21,23 +28,23 @@ cmake_minimum_required(VERSION 3.20)
 #       target_link_libraries(app PRIVATE vix::json)
 # ====================================================================
 
+cmake_minimum_required(VERSION 3.20)
+
 project(vix_json VERSION 1.4.1 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 include(FetchContent)
 
-# ---------------- Target (header-only) ----------------
+# Target (header-only)
 add_library(vix_json INTERFACE)
 add_library(vix::json ALIAS vix_json)
 target_compile_features(vix_json INTERFACE cxx_std_20)
 
-# Public include layout to allow: #include <vix/json/...>
 target_include_directories(vix_json INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-# ---------------- Dependency: nlohmann_json ----------------
 set(_VIX_JSON_PROVIDER "none")
 
 find_package(nlohmann_json QUIET CONFIG)
@@ -60,7 +67,6 @@ else()
     )
     FetchContent_MakeAvailable(nlohmann_json_fallback)
 
-    # Create imported target (so consumers can always link nlohmann_json::nlohmann_json)
     if (NOT TARGET nlohmann_json::nlohmann_json)
       add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
       target_include_directories(nlohmann_json::nlohmann_json INTERFACE
@@ -73,7 +79,7 @@ else()
   endif()
 endif()
 
-# ---------------- Examples (opt-in) ----------------
+# Examples
 option(VIX_JSON_BUILD_EXAMPLES "Build json examples" OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
@@ -95,7 +101,7 @@ if (VIX_JSON_BUILD_EXAMPLES)
   )
 endif()
 
-# ---------------- Install / Export (umbrella) ----------------
+# Install / Export (umbrella)
 install(DIRECTORY include/
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
@@ -105,7 +111,7 @@ install(TARGETS vix_json
   EXPORT VixTargets   # <- join umbrella export-set
 )
 
-# ---------------- Status ----------------
+# Status
 message(STATUS "------------------------------------------------------")
 message(STATUS "vix_json configured (version ${PROJECT_VERSION})")
 message(STATUS "Provider: ${_VIX_JSON_PROVIDER}")

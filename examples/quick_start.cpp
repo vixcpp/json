@@ -1,5 +1,14 @@
 /**
- * @file json_build_demo.cpp
+ *
+ *  @file quick_start.cpp
+ *  @author Gaspard Kirira
+ *
+ *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  https://github.com/vixcpp/vix
+ *  Use of this source code is governed by a MIT license
+ *  that can be found in the License file.
+ *
+ *  Vix.cpp
  * @brief Demonstrates JSON object and array creation with Vix.cpp JSON builders.
  *
  * This example shows how to use the high-level helper functions:
@@ -33,18 +42,18 @@
 
 int main()
 {
-    using namespace vix::json;
+  using namespace vix::json;
 
-    // ---------------------------------------------------------------------
-    // Build a JSON object and array using concise builder syntax
-    // ---------------------------------------------------------------------
-    auto j = o(
-        "message", "Hello",
-        "count", 3,
-        "arr", a(1, 2, 3));
+  // ---------------------------------------------------------------------
+  // Build a JSON object and array using concise builder syntax
+  // ---------------------------------------------------------------------
+  auto j = o(
+      "message", "Hello",
+      "count", 3,
+      "arr", a(1, 2, 3));
 
-    // ---------------------------------------------------------------------
-    // Pretty-print the JSON result
-    // ---------------------------------------------------------------------
-    std::cout << dumps(j, 2) << "\n";
+  // ---------------------------------------------------------------------
+  // Pretty-print the JSON result
+  // ---------------------------------------------------------------------
+  std::cout << dumps(j, 2) << "\n";
 }
