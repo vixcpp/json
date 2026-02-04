@@ -3,15 +3,17 @@
  *  @file loads.hpp
  *  @author Gaspard Kirira
  *
- *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  Copyright 2025, Gaspard Kirira.
+ *  All rights reserved.
  *  https://github.com/vixcpp/vix
+ *
  *  Use of this source code is governed by a MIT license
  *  that can be found in the License file.
  *
  *  Vix.cpp
  */
-#ifndef VIX_LOADS_HPP
-#define VIX_LOADS_HPP
+#ifndef VIX_JSON_LOADS_HPP
+#define VIX_JSON_LOADS_HPP
 
 #include <nlohmann/json.hpp>
 #include <string_view>
@@ -22,59 +24,107 @@
 #include <string>
 
 /**
- * @file VIX_LOADS_HPP
- * @brief JSON parsing utilities for strings and files in *Vix.cpp*.
+ * @file loads.hpp
+ * @brief JSON parsing helpers (string & file) for Vix.cpp.
  *
- * This header provides a set of safe and ergonomic helpers to parse JSON
- * from strings or files, with both **throwing** and **noexcept (optional)** versions.
+ * @details
+ * This header provides **simple, safe and explicit helpers** to parse JSON
+ * from strings or files.
  *
- * ### Overview
- * - `loads()` → parse from string, throws on error.
- * - `try_loads()` → parse from string, returns `std::nullopt` on error.
- * - `load_file()` → parse a JSON file, throws on error.
- * - `try_load_file()` → parse a JSON file, returns `std::nullopt` on error.
+ * It is designed for:
+ * - **Beginners** who want a clear API without dealing with exceptions everywhere.
+ * - **Advanced users** who need full control over error handling and performance.
  *
- * All functions rely on *nlohmann/json* and integrate cleanly with the
- * rest of the Vix.cpp JSON API (`Build`, `Dumps`, `Convert`, etc.).
+ * The API is intentionally small and explicit:
+ * you always choose between a **throwing** version or a **safe optional** version.
  *
- * ### Example
+ * ---
+ *
+ * ## Available functions
+ *
+ * ### From strings
+ * - `loads()`
+ *   Parses JSON and **throws on error**.
+ *
+ * - `try_loads()`
+ *   Parses JSON and returns `std::nullopt` on error (never throws).
+ *
+ * ### From files
+ * - `load_file()`
+ *   Loads and parses a JSON file, **throws on error**.
+ *
+ * - `try_load_file()`
+ *   Safe version returning `std::nullopt` on failure.
+ *
+ * ---
+ *
+ * ## When to use what?
+ *
+ * | Situation | Recommended function |
+ * |----------|---------------------|
+ * | Config file must exist | `load_file()` |
+ * | User input / external data | `try_loads()` |
+ * | Tests or trusted data | `loads()` |
+ * | Optional config file | `try_load_file()` |
+ *
+ * ---
+ *
+ * ## Error model
+ *
+ * - Throwing functions propagate:
+ *   - `std::runtime_error` (I/O errors)
+ *   - `nlohmann::json::parse_error` (invalid JSON)
+ *
+ * - `try_*` functions:
+ *   - Never throw
+ *   - Return `std::nullopt` on **any** failure
+ *
+ * ---
+ *
+ * ## Example
  * @code
  * using namespace vix::json;
  *
- * // Parse from string
- * auto j = loads(R"({"id": 1, "name": "Softadastra"})");
- * std::cout << j["name"] << std::endl; // "Softadastra"
+ * // Parse JSON from string
+ * Json j = loads(R"({"id": 1, "name": "Softadastra"})");
  *
  * // Safe parsing
  * if (auto maybe = try_loads("not-json")) {
- *     std::cout << (*maybe).dump(2);
+ *   std::cout << maybe->dump(2);
  * } else {
- *     std::cout << "Invalid JSON" << std::endl;
+ *   std::cout << "Invalid JSON";
  * }
  *
- * // Parse from file
- * auto conf = load_file("config.json");
+ * // Parse JSON file
+ * Json cfg = load_file("config.json");
  *
- * // Optional version
+ * // Optional file
  * if (auto data = try_load_file("settings.json")) {
- *     std::cout << "Loaded " << data->size() << " entries" << std::endl;
+ *   std::cout << "Loaded " << data->size() << " entries";
  * }
  * @endcode
  */
 
 namespace vix::json
 {
+  /// Primary JSON type used across Vix.cpp.
   using Json = nlohmann::json;
+
+  /// Filesystem alias for convenience.
   namespace fs = std::filesystem;
 
   /**
-   * @brief Parse a JSON document from a `std::string_view`.
+   * @brief Parse a JSON document from a string view.
    *
-   * This function throws if the input is not valid JSON.
-   *
-   * @param s UTF-8 JSON text.
+   * @param s UTF-8 encoded JSON text.
    * @return Parsed JSON value.
-   * @throws nlohmann::json::parse_error if the content is invalid.
+   *
+   * @throws nlohmann::json::parse_error
+   *         If the input is not valid JSON.
+   *
+   * @note
+   * Use this function when invalid JSON is a **programming error**
+   * and should abort execution.
    */
   inline Json loads(std::string_view s)
   {
@@ -82,10 +132,14 @@ namespace vix::json
   }
 
   /**
-   * @brief Parse JSON from string, returning `std::optional` on error.
+   * @brief Safe JSON parsing from a string.
    *
-   * @param s UTF-8 JSON text.
-   * @return Parsed JSON or `std::nullopt` if parsing fails.
+   * @param s UTF-8 encoded JSON text.
+   * @return Parsed JSON or `std::nullopt` on error.
+   *
+   * @note
+   * This function never throws.
+   * Recommended for user input or external data.
    */
   inline std::optional<Json> try_loads(std::string_view s) noexcept
   {
@@ -100,19 +154,20 @@ namespace vix::json
   }
 
   /**
-   * @brief Read and parse a JSON file into a `Json` object.
+   * @brief Load and parse a JSON file.
    *
-   * This version throws on I/O or parse error.
-   *
-   * @param path Filesystem path to a `.json` file.
+   * @param path Path to a JSON file.
    * @return Parsed JSON document.
-   * @throws std::runtime_error if the file cannot be opened.
-   * @throws nlohmann::json::parse_error if the file content is invalid JSON.
    *
-   * @code
-   * Json conf = load_file("config.json");
-   * std::cout << conf.dump(2);
-   * @endcode
+   * @throws std::runtime_error
+   *         If the file cannot be opened or is empty.
+   * @throws nlohmann::json::parse_error
+   *         If the file content is not valid JSON.
+   *
+   * @note
+   * This function reads the entire file into memory.
+   * It is intended for configuration and metadata files,
+   * not for unbounded user uploads.
    */
   inline Json load_file(const fs::path &path)
   {
@@ -120,35 +175,28 @@ namespace vix::json
     if (!ifs)
       throw std::runtime_error("Cannot open JSON file: " + path.string());
 
-    // Read entire file into buffer
-    std::string buf;
     ifs.seekg(0, std::ios::end);
-    const std::streampos sz = ifs.tellg();
-    if (sz > 0)
-    {
-      buf.resize(static_cast<std::size_t>(sz));
-      ifs.seekg(0, std::ios::beg);
-      ifs.read(buf.data(), sz);
-    }
+    const std::streampos end = ifs.tellg();
+    if (end <= 0)
+      throw std::runtime_error("Empty JSON file: " + path.string());
+
+    std::string buf;
+    buf.resize(static_cast<std::size_t>(end));
+
+    ifs.seekg(0, std::ios::beg);
+    ifs.read(buf.data(), static_cast<std::streamsize>(buf.size()));
 
     return Json::parse(buf);
   }
 
   /**
-   * @brief Safe version of `load_file()`.
+   * @brief Safe version of load_file().
    *
-   * Returns `std::nullopt` on error (I/O or invalid JSON).
+   * @param path Path to a JSON file.
+   * @return Parsed JSON or `std::nullopt` on failure.
    *
-   * @param path Path to the file to parse.
-   * @return `std::optional<Json>` — empty on failure.
-   *
-   * @code
-   * if (auto cfg = try_load_file("config.json")) {
-   *     std::cout << (*cfg)["app"] << std::endl;
-   * } else {
-   *     std::cerr << "Failed to load config" << std::endl;
-   * }
-   * @endcode
+   * @note
+   * This function never throws.
    */
   inline std::optional<Json> try_load_file(const fs::path &path) noexcept
   {
@@ -162,19 +210,19 @@ namespace vix::json
     }
   }
 
-  /// @overload for C-string input.
+  /// @overload Convenience overload for C-string input.
   inline Json loads(const char *s) { return loads(std::string_view{s}); }
 
-  /// @overload for C-string input, safe version.
+  /// @overload Safe C-string version.
   inline std::optional<Json> try_loads(const char *s) noexcept
   {
     return try_loads(std::string_view{s});
   }
 
-  /// @overload for C-string file path.
+  /// @overload Convenience overload for C-string file path.
   inline Json load_file(const char *path) { return load_file(fs::path{path}); }
 
-  /// @overload for C-string file path, safe version.
+  /// @overload Safe C-string file version.
   inline std::optional<Json> try_load_file(const char *path) noexcept
   {
     return try_load_file(fs::path{path});
@@ -182,4 +230,4 @@ namespace vix::json
 
 } // namespace vix::json
 
-#endif // VIX_LOADS_HPP
+#endif // VIX_JSON_LOADS_HPP

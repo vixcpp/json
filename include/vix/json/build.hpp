@@ -3,15 +3,24 @@
  *  @file build.hpp
  *  @author Gaspard Kirira
  *
- *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  Copyright 2025, Gaspard Kirira.
+ *  All rights reserved.
  *  https://github.com/vixcpp/vix
+ *
  *  Use of this source code is governed by a MIT license
  *  that can be found in the License file.
  *
  *  Vix.cpp
  */
+
+// Backward-compatible guard alias.
+// Some users might (rarely) rely on VIX_BUILD_HPP in preprocessor checks.
 #ifndef VIX_BUILD_HPP
 #define VIX_BUILD_HPP
+#endif
+
+#ifndef VIX_JSON_BUILD_HPP
+#define VIX_JSON_BUILD_HPP
 
 #include <nlohmann/json.hpp>
 #include <string>
@@ -20,73 +29,83 @@
 #include <utility>
 
 /**
- * @file VIX_BUILD_HPP
- * @brief JSON construction helpers for Vix.cpp based on *nlohmann/json*.
+ * @file build.hpp
+ * @brief JSON construction helpers for Vix.cpp (built on nlohmann::json).
  *
- * Provides a minimal, expressive syntax to build JSON objects and arrays inline
- * without verbose boilerplate. Intended for use in API responses, tests, and
- * configuration generation.
+ * @details
+ * This header provides small, convenient builders to construct JSON values with
+ * less boilerplate.
  *
- * ### Features
- * - `o(k1, v1, k2, v2, …)` → builds a JSON object.
- * - `a(v1, v2, v3, …)` → builds a JSON array.
- * - `kv({{"key", value}, ...})` → builds an object from a key/value initializer list.
+ * It is designed for:
+ * - API responses
+ * - tests and fixtures
+ * - configuration generation
  *
- * ### Example
+ * The goal is to keep code readable for beginners while remaining practical
+ * for advanced users.
+ *
+ * ---
+ *
+ * ## What you get
+ *
+ * - `o(k1, v1, k2, v2, ...)` builds an object (ordered).
+ * - `a(v1, v2, v3, ...)` builds an array.
+ * - `kv({{"k", Json(...)}, ...})` builds an object from a list of pairs.
+ *
+ * ---
+ *
+ * ## Beginner example
  * @code
+ * #include <vix/json/build.hpp>
  * using namespace vix::json;
  *
- * Json user = o(
- *     "id", 42,
- *     "name", "Gaspard",
- *     "skills", a("C++", "Blockchain", "AI")
+ * auto user = o(
+ *   "id", 42,
+ *   "name", "Gaspard",
+ *   "skills", a("C++", "Networking", "Systems")
  * );
  *
- * std::cout << user.dump(2);
- * // {
- * //   "id": 42,
- * //   "name": "Gaspard",
- * //   "skills": ["C++", "Blockchain", "AI"]
- * // }
- *
- * Json meta = kv({
- *     {"version", "1.0.0"},
- *     {"active", true}
- * });
+ * std::cout << user.dump(2) << "\n";
  * @endcode
  *
- * @note This header is header-only and has no dependencies other than *nlohmann/json*.
+ * ---
+ *
+ * ## Important notes
+ * - `o()` returns `OrderedJson` to keep deterministic key order in output.
+ * - All builders are header-only and only depend on nlohmann::json.
+ * - Keys passed to `o()` must be convertible to `std::string_view`.
+ *
+ * ---
+ *
+ * ## Common mistakes
+ * - `o("a", 1, "b")` is invalid (odd number of arguments). It triggers a compile error.
+ * - `kv({{"a", 1}})` is invalid because the value type must be `Json`.
+ *   Use: `kv({{"a", Json(1)}})` or prefer `o("a", 1)`.
  */
 
 namespace vix::json
 {
-  /**
-   * @brief Alias to simplify use of nlohmann::json.
-   */
+  /// Primary JSON type used across Vix.cpp.
   using Json = nlohmann::json;
+
+  /// Ordered JSON type for deterministic object key order.
   using OrderedJson = nlohmann::ordered_json;
 
   namespace detail
   {
-    /**
-     * @brief Compile-time trait for key-like types (convertible to `std::string_view`).
-     */
+    /// Trait: true if K can be viewed as a string key.
     template <class K>
     using is_key_like = std::bool_constant<std::is_convertible_v<K, std::string_view>>;
 
+    // Kept for potential internal overload extensions.
     inline void put_pairs(Json &) {}
 
     /**
-     * @brief Internal recursive helper that inserts key/value pairs into a JSON object.
+     * @brief Internal helper to insert variadic key/value pairs into an object.
      *
-     * @tparam K Key type (must be convertible to `std::string_view`)
-     * @tparam V Value type (any JSON-compatible type)
-     * @tparam Rest Remaining key/value pairs
-     *
-     * @param j JSON object being filled
-     * @param k Current key
-     * @param v Current value
-     * @param rest Remaining pairs
+     * @tparam K Key type (must be convertible to std::string_view).
+     * @tparam V Value type (must be JSON-serializable).
+     * @tparam Rest Remaining arguments.
      */
     template <class K, class V, class... Rest,
               std::enable_if_t<is_key_like<K>::value, int> = 0>
@@ -100,18 +119,17 @@ namespace vix::json
   } // namespace detail
 
   /**
-   * @brief Build a JSON object from a variadic list of key/value pairs.
+   * @brief Build an ordered JSON object from (key, value) pairs.
    *
-   * Each key must be convertible to `std::string_view`.
-   * The number of arguments must be even: `(k1, v1, k2, v2, …)`.
+   * Keys must be convertible to std::string_view.
+   * The number of arguments must be even.
    *
-   * @tparam Args Key/value argument pack.
-   * @param args Sequence of alternating keys and values.
-   * @return Constructed JSON object.
+   * @tparam Args Arguments pack: k1, v1, k2, v2, ...
+   * @param args Alternating keys and values.
+   * @return OrderedJson object.
    *
    * @code
-   * Json obj = o("name", "Alice", "age", 30);
-   * // → {"name": "Alice", "age": 30}
+   * auto j = o("name", "Alice", "age", 30);
    * @endcode
    */
   template <class... Args>
@@ -126,15 +144,14 @@ namespace vix::json
   }
 
   /**
-   * @brief Build a JSON array from a variadic list of values.
+   * @brief Build a JSON array from values.
    *
-   * @tparam Ts Value types (each must be JSON-serializable).
-   * @param ts Sequence of elements.
-   * @return Constructed JSON array.
+   * @tparam Ts Value types (must be JSON-serializable).
+   * @param ts Elements.
+   * @return Json array.
    *
    * @code
-   * Json arr = a(1, 2, 3, 4);
-   * // → [1, 2, 3, 4]
+   * auto xs = a(1, 2, 3);
    * @endcode
    */
   template <class... Ts>
@@ -146,20 +163,19 @@ namespace vix::json
   }
 
   /**
-   * @brief Build a JSON object from an initializer list of key/value pairs.
+   * @brief Build a JSON object from a list of (key, Json) pairs.
    *
-   * This function provides an explicit syntax for constructing
-   * objects when the number of pairs is not known at compile time.
+   * This is useful when pairs are not known at compile time.
+   * If you can, prefer `o()` for simplicity.
    *
-   * @param xs List of key/value pairs (`std::string_view`, `Json`).
-   * @return Constructed JSON object.
+   * @param xs List of pairs: {{"k", Json(...)}, ...}
+   * @return Json object.
    *
    * @code
    * Json j = kv({
-   *   {"version", "1.0.0"},
-   *   {"debug", true}
+   *   {"version", Json("1.0.0")},
+   *   {"debug", Json(true)}
    * });
-   * // → {"version": "1.0.0", "debug": true}
    * @endcode
    */
   inline Json kv(std::initializer_list<std::pair<std::string_view, Json>> xs)
@@ -172,4 +188,4 @@ namespace vix::json
 
 } // namespace vix::json
 
-#endif // VIX_BUILD_HPP
+#endif // VIX_JSON_BUILD_HPP

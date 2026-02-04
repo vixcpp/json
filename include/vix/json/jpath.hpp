@@ -3,15 +3,17 @@
  *  @file jpath.hpp
  *  @author Gaspard Kirira
  *
- *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  Copyright 2025, Gaspard Kirira.
+ *  All rights reserved.
  *  https://github.com/vixcpp/vix
+ *
  *  Use of this source code is governed by a MIT license
  *  that can be found in the License file.
  *
  *  Vix.cpp
  */
-#ifndef VIX_JPATH_HPP
-#define VIX_JPATH_HPP
+#ifndef VIX_JSON_JPATH_HPP
+#define VIX_JSON_JPATH_HPP
 
 #include <nlohmann/json.hpp>
 #include <string>
@@ -23,18 +25,55 @@
 #include <charconv>
 
 /**
- * @file VIX_JPATH_HPP
- * @brief JSON path navigation and mutation utilities for *Vix.cpp*.
+ * @file jpath.hpp
+ * @brief Navigate and mutate JSON using a small path language (JPath).
  *
- * This header provides a minimal **JPath** implementation to traverse and modify
- * JSON documents using string paths similar to JavaScript-style expressions.
+ * @details
+ * This header provides a minimal, dependency-free path syntax to:
+ * - Read deeply nested values (without chaining many `[]` calls)
+ * - Create missing objects/arrays automatically for writes
  *
- * ### Supported Syntax
- * - Dot notation: `"user.name.first"`
- * - Array indices: `"users[0].email"`
- * - Quoted keys with brackets: `["complex.key"].value`
+ * It is useful for:
+ * - Configuration trees
+ * - Dynamic payload building
+ * - Adapters and bridges between modules
  *
- * ### Example
+ * ---
+ *
+ * ## Supported syntax (beginner friendly)
+ * 1) Dot notation:
+ *    - `"user.name"`
+ *    - `"settings.theme"`
+ *
+ * 2) Array indices:
+ *    - `"users[0].email"`
+ *    - `"roles[1]"`
+ *
+ * 3) Quoted keys inside brackets:
+ *    - `["complex.key"].value`
+ *    - `["a b c"][0]`
+ *
+ * ---
+ *
+ * ## Read vs Write behavior (important)
+ *
+ * - `const Json* jget(const Json&, path)`:
+ *   - Never throws
+ *   - Returns nullptr if path is invalid or missing
+ *
+ * - `Json* jget(Json&, path)`:
+ *   - May throw on syntax errors
+ *   - Automatically creates missing intermediate nodes:
+ *     - missing object keys become created objects
+ *     - missing array indices grow the array and fill with nulls
+ *
+ * - `bool jset(Json&, path, value)`:
+ *   - Calls writable `jget` internally
+ *   - Returns false if syntax is invalid or assignment fails
+ *
+ * ---
+ *
+ * ## Example
  * @code
  * using namespace vix::json;
  *
@@ -43,38 +82,49 @@
  *   "settings": { "theme": "dark" }
  * })"_json;
  *
- * const Json* theme = jget(j, "settings.theme");
- * std::cout << "theme=" << (theme ? theme->get<std::string>() : "N/A") << "\\n";
+ * // Read
+ * if (const Json* theme = jget(j, "settings.theme")) {
+ *   std::cout << "theme=" << theme->get<std::string>() << "\n";
+ * }
  *
- * // Modify
+ * // Write (auto-creates)
  * jset(j, "user.roles[1]", "developer");
  * jset(j, "user.address.city", "Kampala");
  *
- * std::cout << j.dump(2) << "\\n";
+ * std::cout << j.dump(2) << "\n";
  * @endcode
+ *
+ * ---
+ *
+ * ## Expert notes
+ * - Path tokenization is done with a lightweight parser (no regex).
+ * - Indices are parsed with `std::from_chars` for speed and no locale impact.
+ * - This is not a full JSONPath implementation: it is intentionally small.
  */
 
 namespace vix::json
 {
-  /// Alias utilitaire pour `nlohmann::json`.
+  /// Primary JSON type used across Vix.cpp.
   using Json = nlohmann::json;
 
   /**
-   * @brief Token struct representing a parsed path segment (key or index).
+   * @brief A parsed path segment (either object key or array index).
+   *
+   * This is the output of tokenize_path() and is used internally by jget/jset.
    */
   struct Token
   {
-    /// Kind of token.
+    /// Token kind (object key or array index).
     enum Kind
     {
-      Key,  ///< Object key (string)
-      Index ///< Array index (number)
+      Key,  ///< Object key segment
+      Index ///< Array index segment
     } kind{};
 
-    /// Key name (used if kind == Key).
+    /// Key name (used when kind == Key).
     std::string key;
 
-    /// Array index (used if kind == Index).
+    /// Index (used when kind == Index).
     std::size_t index = static_cast<std::size_t>(-1);
   };
 
@@ -123,7 +173,15 @@ namespace vix::json
     }
 
     /**
-     * @brief Parse a quoted key inside brackets: ["key name"]
+     * @brief Parse a quoted key inside brackets: ["key name"].
+     *
+     * Supports basic escaping: \" and \\.
+     *
+     * @param path Full path string
+     * @param i Current offset (points to '['), updated on success
+     * @param out_key Parsed key output
+     * @param err Error string on failure
+     * @return true on success, false on error
      */
     inline bool parse_bracket_string_key(std::string_view path, std::size_t &i,
                                          std::string &out_key, std::string &err)
@@ -189,12 +247,12 @@ namespace vix::json
     }
 
     /**
-     * @brief Parse a full JPath into tokens, without throwing.
+     * @brief Parse a full JPath into tokens (no throw).
      *
-     * @param path JPath string (e.g. `"user.roles[0].name"`).
-     * @param out  Vector to store parsed tokens.
-     * @param err  Error message in case of failure.
-     * @return true on success, false otherwise.
+     * @param path JPath string, e.g. "user.roles[0].name"
+     * @param out Output tokens
+     * @param err Human-readable error message on failure
+     * @return true on success, false on error
      */
     inline bool tokenize_path_nothrow(std::string_view path, std::vector<Token> &out, std::string &err)
     {
@@ -293,9 +351,9 @@ namespace vix::json
   /**
    * @brief Tokenize a JPath string into structured tokens (throws on error).
    *
-   * @param path JPath expression.
-   * @return Vector of parsed tokens.
-   * @throws std::runtime_error on invalid syntax.
+   * @param path JPath expression
+   * @return Parsed tokens
+   * @throws std::runtime_error on invalid syntax
    */
   inline std::vector<Token> tokenize_path(std::string_view path)
   {
@@ -307,11 +365,13 @@ namespace vix::json
   }
 
   /**
-   * @brief Safely navigate a JSON tree using a JPath string.
+   * @brief Read-only navigation: returns pointer or nullptr.
    *
-   * @param j JSON root.
-   * @param path JPath expression (e.g. `"users[0].name"`).
-   * @return Pointer to the JSON node, or `nullptr` if missing/invalid.
+   * @param j JSON root
+   * @param path JPath expression, e.g. "users[0].name"
+   * @return Pointer to node, or nullptr if missing or invalid
+   *
+   * @note Never throws.
    */
   inline const Json *jget(const Json &j, std::string_view path)
   {
@@ -349,14 +409,17 @@ namespace vix::json
   }
 
   /**
-   * @brief Obtain a mutable reference to a node, creating objects/arrays as needed.
+   * @brief Writable navigation: returns pointer, creates missing nodes.
    *
-   * Missing keys or array slots are automatically created as `null` or empty containers.
+   * @details
+   * Intermediate nodes are created as needed:
+   * - Keys create objects (`{}`)
+   * - Indices create arrays (`[]`) and expand with nulls
    *
-   * @param j JSON root.
-   * @param path JPath expression.
-   * @return Pointer to the created or existing JSON node.
-   * @throws std::runtime_error on syntax error.
+   * @param j JSON root
+   * @param path JPath expression
+   * @return Pointer to the created or existing node
+   * @throws std::runtime_error on invalid syntax
    */
   inline Json *jget(Json &j, std::string_view path)
   {
@@ -393,13 +456,15 @@ namespace vix::json
   }
 
   /**
-   * @brief Set a JSON value at the specified path (auto-creates intermediate nodes).
+   * @brief Assign a value at the specified path (auto-creates intermediate nodes).
    *
-   * @tparam T Value type (convertible to JSON).
-   * @param j JSON root to modify.
-   * @param path JPath expression.
-   * @param v Value to assign.
-   * @return true if successful, false if a parsing or type error occurred.
+   * @tparam T Value type convertible to Json
+   * @param j JSON root
+   * @param path JPath expression
+   * @param v Value to assign
+   * @return true on success, false on syntax/assignment error
+   *
+   * @note Never throws (errors are converted to false).
    */
   template <class T>
   inline bool jset(Json &j, std::string_view path, T &&v)
@@ -424,4 +489,4 @@ namespace vix::json
 
 } // namespace vix::json
 
-#endif // VIX_JPATH_HPP
+#endif // VIX_JSON_JPATH_HPP

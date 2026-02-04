@@ -3,15 +3,17 @@
  *  @file dumps.hpp
  *  @author Gaspard Kirira
  *
- *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  Copyright 2025, Gaspard Kirira.
+ *  All rights reserved.
  *  https://github.com/vixcpp/vix
+ *
  *  Use of this source code is governed by a MIT license
  *  that can be found in the License file.
  *
  *  Vix.cpp
  */
-#ifndef VIX_DUMPS_HPP
-#define VIX_DUMPS_HPP
+#ifndef VIX_JSON_DUMPS_HPP
+#define VIX_JSON_DUMPS_HPP
 
 #include <nlohmann/json.hpp>
 #include <string>
@@ -19,55 +21,63 @@
 #include <fstream>
 #include <filesystem>
 #include <system_error>
+#include <stdexcept>
 
 /**
- * @file VIX_DUMPS_HPP
- * @brief Utilities for serializing and writing JSON data in Vix.cpp.
+ * @file dumps.hpp
+ * @brief JSON serialization helpers (to string & to file) for Vix.cpp.
  *
- * This header provides convenient helpers to:
- * - Convert JSON values into formatted or compact strings (`dumps`, `dumps_compact`).
- * - Write JSON files atomically to disk (`dump_file`).
+ * @details
+ * This header provides two categories of helpers:
  *
- * The helpers wrap `nlohmann::json::dump()` with simplified parameters
- * and include robust file-writing logic to prevent corruption in case of interruption.
+ * 1) **Serialize JSON to a string**
+ * - `dumps()` produces pretty JSON (multi-line).
+ * - `dumps_compact()` produces compact JSON (single-line).
+ * - `dumps_pretty()` is an explicit alias of `dumps()`.
  *
- * ### Example
+ * 2) **Write JSON to disk safely**
+ * - `dump_file()` writes a JSON document using a temp file + rename strategy.
+ *
+ * ---
+ *
+ * ## For beginners
+ * If you want to write a JSON file safely:
  * @code
  * using namespace vix::json;
- *
- * Json j = {
- *     {"name", "Softadastra"},
- *     {"version", "1.0.0"},
- *     {"features", {"decentralized", "fast", "secure"}}
- * };
- *
- * std::string pretty = dumps_pretty(j);
- * std::string compact = dumps_compact(j);
- *
- * dump_file("data/config.json", j);
+ * Json j = {{"app", "Vix.cpp"}, {"debug", true}};
+ * dump_file("config.json", j);
  * @endcode
+ *
+ * ---
+ *
+ * ## For advanced users
+ * - `dump_file()` writes to `<path>.tmp` then renames to `<path>`.
+ * - This reduces the risk of corrupted files if the process crashes mid-write.
+ * - The function also creates parent directories (best-effort).
+ *
+ * Note: "atomic" depends on filesystem semantics. On typical local filesystems,
+ * rename within the same directory is atomic, but the function still provides a
+ * safe fallback when rename fails.
  */
 
 namespace vix::json
 {
-  /// Alias utilitaire vers `nlohmann::json`.
+  /// Primary JSON type used across Vix.cpp.
   using Json = nlohmann::json;
 
-  /// Alias du namespace `std::filesystem` pour concision.
+  /// Filesystem alias for convenience.
   namespace fs = std::filesystem;
 
   /**
-   * @brief Convert a JSON value into a human-readable string (pretty-printed).
+   * @brief Serialize JSON to a human-readable string (pretty printed).
    *
-   * @param j JSON object or array.
+   * @param j JSON value (object/array/etc).
    * @param indent Number of spaces per indentation level (default: 2).
    * @param ensure_ascii If true, non-ASCII characters are escaped.
    * @return Formatted JSON string.
    *
-   * @code
-   * Json j = {{"id", 1}, {"name", "Alice"}};
-   * std::string s = dumps(j); // → "{\n  \"id\": 1,\n  \"name\": \"Alice\"\n}"
-   * @endcode
+   * @note
+   * Use this for logs, debugging, configuration files, and readable outputs.
    */
   inline std::string dumps(const Json &j, int indent = 2, bool ensure_ascii = false)
   {
@@ -75,16 +85,14 @@ namespace vix::json
   }
 
   /**
-   * @brief Convert a JSON value into a compact single-line string.
+   * @brief Serialize JSON to a compact single-line string.
    *
-   * @param j JSON object or array.
+   * @param j JSON value (object/array/etc).
    * @param ensure_ascii If true, non-ASCII characters are escaped.
    * @return Compact JSON string.
    *
-   * @code
-   * Json j = {{"x", 1}, {"y", 2}};
-   * std::string s = dumps_compact(j); // → "{\"x\":1,\"y\":2}"
-   * @endcode
+   * @note
+   * Use this for network payloads, compact storage, or performance-sensitive logs.
    */
   inline std::string dumps_compact(const Json &j, bool ensure_ascii = false)
   {
@@ -92,12 +100,7 @@ namespace vix::json
   }
 
   /**
-   * @brief Alias of `dumps()` for explicit readability.
-   *
-   * @param j JSON object or array.
-   * @param indent Number of spaces per indentation level.
-   * @param ensure_ascii Escape non-ASCII characters if true.
-   * @return Pretty-printed JSON string.
+   * @brief Explicit alias for dumps() to emphasize readability.
    */
   inline std::string dumps_pretty(const Json &j, int indent = 2, bool ensure_ascii = false)
   {
@@ -105,31 +108,36 @@ namespace vix::json
   }
 
   /**
-   * @brief Write a JSON value to a file atomically.
+   * @brief Write JSON to a file using a temp file + rename strategy.
    *
-   * The function writes to a temporary file (`.tmp` suffix), then renames it
-   * to the final destination to avoid corruption in case of interruption.
-   * It also ensures that the parent directory exists.
+   * @details
+   * Steps:
+   * 1) Ensure parent directory exists (best-effort).
+   * 2) Write JSON to `<path>.tmp`.
+   * 3) Replace destination by renaming temp file to `<path>`.
+   * 4) If rename fails, fallback to copy + remove.
+   *
+   * This strategy reduces the chance of ending with a partially-written file.
    *
    * @param path Destination file path.
    * @param j JSON value to write.
-   * @param indent Number of spaces per indentation level (default: 2).
-   * @param ensure_ascii If true, escape non-ASCII characters.
+   * @param indent Pretty-print indentation (default: 2).
+   * @param ensure_ascii Escape non-ASCII characters if true.
    *
-   * @throws std::runtime_error if the file cannot be written or renamed.
+   * @throws std::runtime_error
+   *         If the temp file cannot be written or the final replacement fails.
    *
-   * @code
-   * Json conf = {{"app", "Vix.cpp"}, {"debug", true}};
-   * dump_file("output/settings.json", conf);
-   * @endcode
+   * @warning
+   * This function writes the entire JSON document at once.
+   * Do not use it for unbounded user uploads.
    */
   inline void dump_file(const fs::path &path, const Json &j, int indent = 2, bool ensure_ascii = false)
   {
-    // 1) Ensure directory exists
+    // 1) Ensure directory exists (best-effort)
     if (path.has_parent_path())
     {
       std::error_code ec;
-      fs::create_directories(path.parent_path(), ec); // best-effort
+      fs::create_directories(path.parent_path(), ec);
     }
 
     // 2) Write to temp file
@@ -157,12 +165,11 @@ namespace vix::json
       }
     }
 
-    // 3) Replace destination atomically
+    // 3) Replace destination
     std::error_code ec;
     if (fs::exists(path, ec))
-    {
       fs::remove(path, ec); // best-effort
-    }
+
     fs::rename(tmp, path, ec);
     if (ec)
     {
@@ -175,17 +182,13 @@ namespace vix::json
     }
   }
 
-  /**
-   * @brief Overload accepting a C-string path.
-   */
+  /// @overload Convenience overload for C-string path.
   inline void dump_file(const char *path, const Json &j, int indent = 2, bool ensure_ascii = false)
   {
     dump_file(fs::path{path}, j, indent, ensure_ascii);
   }
 
-  /**
-   * @brief Overload accepting a `std::string` path.
-   */
+  /// @overload Convenience overload for std::string path.
   inline void dump_file(const std::string &path, const Json &j, int indent = 2, bool ensure_ascii = false)
   {
     dump_file(fs::path{path}, j, indent, ensure_ascii);
@@ -193,4 +196,4 @@ namespace vix::json
 
 } // namespace vix::json
 
-#endif // VIX_DUMPS_HPP
+#endif // VIX_JSON_DUMPS_HPP
