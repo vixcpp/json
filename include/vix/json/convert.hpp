@@ -3,15 +3,17 @@
  *  @file convert.hpp
  *  @author Gaspard Kirira
  *
- *  Copyright 2025, Gaspard Kirira.  All rights reserved.
+ *  Copyright 2025, Gaspard Kirira.
+ *  All rights reserved.
  *  https://github.com/vixcpp/vix
+ *
  *  Use of this source code is governed by a MIT license
  *  that can be found in the License file.
  *
  *  Vix.cpp
  */
-#ifndef VIX_CONVERT_HPP
-#define VIX_CONVERT_HPP
+#ifndef VIX_JSON_CONVERT_HPP
+#define VIX_JSON_CONVERT_HPP
 
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -20,72 +22,86 @@
 #include <stdexcept>
 
 /**
- * @file VIX_CONVERT_HPP
- * @brief Safe JSON accessors and converters built on top of *nlohmann/json*.
+ * @file convert.hpp
+ * @brief Safe JSON accessors and converters for Vix.cpp (built on nlohmann::json).
  *
- * Utilities to navigate and extract values from JSON documents with:
- * - **Pointer helpers** `ptr()` that return a `const Json*` (or `nullptr`)
- * - **Optional getters** `get_opt<T>()` that never throw
- * - **Defaulted getters** `get_or<T>()` returning a fallback value
- * - **Strict getters** `ensure<T>()` that throw with clear messages
+ * @details
+ * This header reduces repetitive JSON boilerplate such as:
+ * - `contains()`, `is_*()`, try/catch around `get<T>()`
+ * - manual checks for missing keys or invalid array indexes
  *
- * These helpers avoid repetitive `contains()/is_*()` checks and centralize
- * error handling. They are especially useful for parsing external payloads.
+ * It provides four levels of strictness:
  *
- * ### Example
+ * 1) **ptr()**
+ *    Returns a pointer (`const Json*`) or `nullptr` when missing.
+ *
+ * 2) **get_opt<T>()**
+ *    Returns `std::optional<T>`, never throws.
+ *
+ * 3) **get_or<T>()**
+ *    Returns a `T` or a default value when missing/invalid.
+ *
+ * 4) **ensure<T>()**
+ *    Strict: throws when missing/type mismatch.
+ *
+ * ---
+ *
+ * ## For beginners
+ *
+ * Use this simple rule:
+ * - External/user input: `get_opt()` or `get_or()`
+ * - Internal/trusted data: `ensure()`
+ *
+ * Example:
  * @code
  * using namespace vix::json;
  *
- * Json j = R"({
- *   "user": {"id": 42, "name": "Ada"},
- *   "tags": ["c++", "ai"]
- * })"_json;
+ * Json j = R"({"user": {"id": 42, "name": "Ada"}})"_json;
  *
- * // Pointers
- * const Json* p_user = ptr(j, "user");                // -> non-null
- * const Json* p_tag0 = ptr(j["tags"], 0);             // -> non-null
+ * // safe
+ * auto id = get_or<int>(j["user"], "id", -1);
  *
- * // Optionals
- * auto id   = get_opt<int>(*p_user, "id");            // -> std::optional<int>{42}
- * auto city = get_opt<std::string>(*p_user, "city");  // -> std::nullopt
- *
- * // Defaults
- * int safe_id = get_or<int>(*p_user, "id", -1);       // -> 42
- * std::string name = get_or<std::string>(*p_user, "name", "unknown"); // -> "Ada"
- *
- * // Strict (throws on missing/type mismatch)
- * int must_id = ensure<int>(*p_user, "id");
+ * // strict
+ * int must_id = ensure<int>(j["user"], "id");
  * @endcode
+ *
+ * ---
+ *
+ * ## For advanced users
+ * - `get_opt()` catches `nlohmann::json::exception` and returns `std::nullopt`.
+ * - `ensure()` is intentionally strict; use it when you want failures to be loud.
+ * - `ptr(obj, key)` allocates a temporary std::string in this implementation.
+ *   This keeps compatibility stable across versions of nlohmann::json.
  */
 
 namespace vix::json
 {
-  /// Alias utilitaire vers `nlohmann::json`.
+  /// Primary JSON type used across Vix.cpp.
   using Json = nlohmann::json;
 
   /**
-   * @brief Obtain a pointer to a member value by key if `j` is an object.
+   * @brief Pointer to an object member by key.
    *
-   * @param j   JSON value expected to be an object.
+   * @param j JSON value expected to be an object.
    * @param key Object key to look up.
-   * @return Pointer to the member value, or `nullptr` if `j` is not an object
-   *         or the key does not exist.
+   * @return Pointer to the member, or nullptr if missing or not an object.
    */
   inline const Json *ptr(const Json &j, std::string_view key) noexcept
   {
     if (!j.is_object())
       return nullptr;
+
+    // Compatible approach across nlohmann::json versions:
     auto it = j.find(std::string(key));
     return (it == j.end()) ? nullptr : &(*it);
   }
 
   /**
-   * @brief Obtain a pointer to an array element by index if `j` is an array.
+   * @brief Pointer to an array element by index.
    *
-   * @param j   JSON value expected to be an array.
+   * @param j JSON value expected to be an array.
    * @param idx Zero-based index.
-   * @return Pointer to the element, or `nullptr` if `j` is not an array or
-   *         `idx` is out of bounds.
+   * @return Pointer to the element, or nullptr if out of bounds or not an array.
    */
   inline const Json *ptr(const Json &j, std::size_t idx) noexcept
   {
@@ -95,14 +111,15 @@ namespace vix::json
   }
 
   /**
-   * @brief Try to convert `j` to `T`, returning `std::nullopt` on failure.
+   * @brief Convert a JSON value to T, returning std::nullopt on failure.
    *
-   * Returns `std::nullopt` if `j` is discarded or `null`, or if conversion
-   * throws a `nlohmann::json::exception`.
+   * Failure cases:
+   * - `j` is null or discarded
+   * - `j.get<T>()` throws (type mismatch, etc.)
    *
-   * @tparam T Target type (must be JSON-convertible).
-   * @param j  JSON value.
-   * @return `std::optional<T>`.
+   * @tparam T Target type.
+   * @param j JSON value.
+   * @return std::optional<T>
    */
   template <class T>
   inline std::optional<T> get_opt(const Json &j) noexcept
@@ -120,7 +137,7 @@ namespace vix::json
   }
 
   /**
-   * @brief Try to convert `*jp` to `T`, or `std::nullopt` if `jp` is null.
+   * @brief Convert *jp to T, or std::nullopt if jp is nullptr or conversion fails.
    */
   template <class T>
   inline std::optional<T> get_opt(const Json *jp) noexcept
@@ -129,7 +146,7 @@ namespace vix::json
   }
 
   /**
-   * @brief Try to convert `obj[key]` to `T`, or `std::nullopt` if missing/invalid.
+   * @brief Convert obj[key] to T, or std::nullopt if missing/invalid.
    */
   template <class T>
   inline std::optional<T> get_opt(const Json &obj, std::string_view key) noexcept
@@ -138,7 +155,7 @@ namespace vix::json
   }
 
   /**
-   * @brief Try to convert `arr[idx]` to `T`, or `std::nullopt` if missing/invalid.
+   * @brief Convert arr[idx] to T, or std::nullopt if missing/invalid.
    */
   template <class T>
   inline std::optional<T> get_opt(const Json &arr, std::size_t idx) noexcept
@@ -147,12 +164,12 @@ namespace vix::json
   }
 
   /**
-   * @brief Convert `j` to `T` or return `def` if not possible.
+   * @brief Convert j to T, or return def if not possible.
    *
-   * @tparam T  Target type.
-   * @param j   JSON value.
-   * @param def Default value to return on failure.
-   * @return `T` either parsed or defaulted.
+   * @tparam T Target type.
+   * @param j JSON value.
+   * @param def Default value used on failure.
+   * @return T parsed or defaulted.
    */
   template <class T>
   inline T get_or(const Json &j, T def) noexcept
@@ -162,7 +179,7 @@ namespace vix::json
   }
 
   /**
-   * @brief Convert `*jp` to `T` or return `def` if `jp` is null or parsing fails.
+   * @brief Convert *jp to T, or return def if jp is null or conversion fails.
    */
   template <class T>
   inline T get_or(const Json *jp, T def) noexcept
@@ -171,7 +188,7 @@ namespace vix::json
   }
 
   /**
-   * @brief Convert `obj[key]` to `T` or return `def` if missing/invalid.
+   * @brief Convert obj[key] to T, or return def if missing/invalid.
    */
   template <class T>
   inline T get_or(const Json &obj, std::string_view key, T def) noexcept
@@ -181,7 +198,7 @@ namespace vix::json
   }
 
   /**
-   * @brief Convert `arr[idx]` to `T` or return `def` if missing/invalid.
+   * @brief Convert arr[idx] to T, or return def if missing/invalid.
    */
   template <class T>
   inline T get_or(const Json &arr, std::size_t idx, T def) noexcept
@@ -191,36 +208,26 @@ namespace vix::json
   }
 
   /**
-   * @brief Strictly convert `j` to `T`, letting *nlohmann/json* exceptions propagate.
+   * @brief Strict conversion of j to T (throws on error).
    *
-   * Use this when the value must exist and be of the right type.
+   * Use when missing/type mismatch is a bug and must be loud.
    *
    * @tparam T Target type.
-   * @param j  JSON value.
-   * @return Parsed value of type `T`.
+   * @param j JSON value.
+   * @return Parsed T.
    * @throws nlohmann::json::exception on conversion error.
    */
   template <class T>
   inline T ensure(const Json &j)
   {
-    // Let nlohmann::json exceptions propagate (type mismatch, etc.)
     return j.get<T>();
   }
 
   /**
-   * @brief Strictly convert `obj[key]` to `T`, throwing clear `std::runtime_error`s.
+   * @brief Strict conversion of obj[key] to T with clear errors.
    *
-   * Checks that `obj` is an object and `key` exists; wraps the underlying
-   * `nlohmann::json` exception with a contextual message indicating which key
-   * failed conversion.
-   *
-   * @tparam T   Target type.
-   * @param obj  JSON value expected to be an object.
-   * @param key  Object key to extract.
-   * @return Parsed value of type `T`.
-   *
-   * @throws std::runtime_error if `obj` is not an object or `key` is missing.
-   * @throws std::runtime_error wrapping `nlohmann::json::exception` on type error.
+   * @throws std::runtime_error if obj is not an object or key is missing.
+   * @throws std::runtime_error wrapping nlohmann::json::exception on type mismatch.
    */
   template <class T>
   inline T ensure(const Json &obj, std::string_view key)
@@ -244,4 +251,4 @@ namespace vix::json
 
 } // namespace vix::json
 
-#endif // VIX_CONVERT_HPP
+#endif // VIX_JSON_CONVERT_HPP
