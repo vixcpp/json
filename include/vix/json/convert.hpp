@@ -16,10 +16,16 @@
 #define VIX_JSON_CONVERT_HPP
 
 #include <nlohmann/json.hpp>
+
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
-#include <stdexcept>
+#include <utility>
+
+#include <vix/json/Simple.hpp>
 
 /**
  * @file convert.hpp
@@ -72,6 +78,13 @@
  * - `ensure()` is intentionally strict; use it when you want failures to be loud.
  * - `ptr(obj, key)` allocates a temporary std::string in this implementation.
  *   This keeps compatibility stable across versions of nlohmann::json.
+ *
+ * ---
+ *
+ * ## Simple -> Json conversion
+ * This header also provides:
+ * - `simple_to_json(token|kvs|array_t)`
+ * - `to_json(...)` convenience overloads
  */
 
 namespace vix::json
@@ -165,11 +178,6 @@ namespace vix::json
 
   /**
    * @brief Convert j to T, or return def if not possible.
-   *
-   * @tparam T Target type.
-   * @param j JSON value.
-   * @param def Default value used on failure.
-   * @return T parsed or defaulted.
    */
   template <class T>
   inline T get_or(const Json &j, T def) noexcept
@@ -210,11 +218,6 @@ namespace vix::json
   /**
    * @brief Strict conversion of j to T (throws on error).
    *
-   * Use when missing/type mismatch is a bug and must be loud.
-   *
-   * @tparam T Target type.
-   * @param j JSON value.
-   * @return Parsed T.
    * @throws nlohmann::json::exception on conversion error.
    */
   template <class T>
@@ -245,9 +248,90 @@ namespace vix::json
     }
     catch (const nlohmann::json::exception &e)
     {
-      throw std::runtime_error(std::string("ensure: type error for key '") + std::string(key) + "': " + e.what());
+      throw std::runtime_error(
+          std::string("ensure: type error for key '") + std::string(key) + "': " + e.what());
     }
   }
+
+  /**
+   * @brief Convert a Simple token into nlohmann::json.
+   *
+   * Mapping:
+   * - null -> null
+   * - bool -> bool
+   * - int64 -> integer
+   * - double -> float
+   * - string -> string
+   * - array/object -> deep conversion
+   */
+  inline Json simple_to_json(const vix::json::token &t);
+
+  /// @brief Convert a Simple array into a JSON array.
+  inline Json simple_to_json(const vix::json::array_t &a)
+  {
+    Json out = Json::array();
+
+    for (const auto &e : a.elems)
+    {
+      out.push_back(simple_to_json(e));
+    }
+
+    return out;
+  }
+
+  /// @brief Convert a Simple object into a JSON object.
+  inline Json simple_to_json(const vix::json::kvs &o)
+  {
+    Json out = Json::object();
+    o.for_each_pair([&](std::string_view k, const vix::json::token &v)
+                    { out[std::string(k)] = simple_to_json(v); });
+    return out;
+  }
+
+  inline Json simple_to_json(const vix::json::token &t)
+  {
+    if (t.is_null())
+      return Json(nullptr);
+
+    if (const bool *b = t.as_bool())
+      return Json(*b);
+
+    if (const std::int64_t *i = t.as_i64())
+      return Json(*i);
+
+    if (const double *d = t.as_f64())
+      return Json(*d);
+
+    if (const std::string *s = t.as_string())
+      return Json(*s);
+
+    if (t.is_array())
+    {
+      auto p = t.as_array_ptr();
+      if (!p)
+        return Json::array();
+      return simple_to_json(*p);
+    }
+
+    if (t.is_object())
+    {
+      auto p = t.as_object_ptr();
+      if (!p)
+        return Json::object();
+      return simple_to_json(*p);
+    }
+
+    return Json(nullptr);
+  }
+
+  /**
+   * @brief Convenience aliases.
+   *
+   * These keep naming consistent with other helpers.
+   */
+  inline Json to_json(const vix::json::token &t) { return simple_to_json(t); }
+  inline Json to_json(const vix::json::kvs &o) { return simple_to_json(o); }
+  inline Json to_json(const vix::json::array_t &a) { return simple_to_json(a); }
 
 } // namespace vix::json
 
