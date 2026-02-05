@@ -766,6 +766,26 @@ namespace vix::json
       return def;
     }
 
+    std::string get_string_or(std::string_view key) const
+    {
+      return get_string_or(key, std::string{});
+    }
+
+    std::int64_t get_i64_or(std::string_view key) const noexcept
+    {
+      return get_i64_or(key, 0);
+    }
+
+    double get_f64_or(std::string_view key) const noexcept
+    {
+      return get_f64_or(key, 0.0);
+    }
+
+    bool get_bool_or(std::string_view key) const noexcept
+    {
+      return get_bool_or(key, false);
+    }
+
     // Typed setters
 
     void set_string(std::string_view key, std::string v) { set(key, token(std::move(v))); }
