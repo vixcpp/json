@@ -137,13 +137,16 @@ namespace vix::json
     /// @brief Construct integer from std::int64_t.
     token(std::int64_t i) : v(i) {}
 
+#if !std::is_same_v<std::int64_t, long long>
     /**
      * @brief Construct integer from long long.
      *
      * This exists to avoid overload ambiguity on platforms where std::int64_t is long.
      */
     token(long long i) : v(static_cast<std::int64_t>(i)) {}
+#endif
 
+#if !std::is_same_v<std::uint64_t, unsigned long long>
     /**
      * @brief Construct integer from unsigned long long.
      *
@@ -151,6 +154,7 @@ namespace vix::json
      * a minimal internal model. If you need full uint64 fidelity, store as string.
      */
     token(unsigned long long u) : v(static_cast<std::int64_t>(u)) {}
+#endif
 
     /**
      * @brief Construct floating point.
