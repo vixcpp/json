@@ -145,7 +145,8 @@ namespace vix::json
   {
     try
     {
-      return Json::parse(s);
+      Json j = Json::parse(s);
+      return j;
     }
     catch (...)
     {
