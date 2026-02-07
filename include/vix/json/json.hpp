@@ -127,7 +127,12 @@ namespace vix::json
    * Json j = R"({"a": 1, "b": 2})"_json;
    * @endcode
    */
-  namespace literals = nlohmann::literals;
+#if defined(NLOHMANN_JSON_VERSION_MAJOR)
+#if (NLOHMANN_JSON_VERSION_MAJOR > 3) || \
+    (NLOHMANN_JSON_VERSION_MAJOR == 3 && NLOHMANN_JSON_VERSION_MINOR >= 10)
+  namespace literals = nlohmann::literals::json_literals;
+#endif
+#endif
 
 } // namespace vix::json
 
