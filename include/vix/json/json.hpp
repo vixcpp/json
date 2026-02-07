@@ -119,20 +119,27 @@ namespace vix::json
   inline Json arr() { return Json::array(); }
 
   /**
-   * @brief JSON string literal helpers from nlohmann.
+   * @brief JSON string literal helpers.
    *
    * Enables:
    * @code
+   * #define VIX_JSON_ENABLE_LITERALS 1
    * using namespace vix::json::literals;
    * Json j = R"({"a": 1, "b": 2})"_json;
    * @endcode
+   *
+   * Note:
+   * Disabled by default because it relies on parsing (can throw).
    */
-#if defined(NLOHMANN_JSON_VERSION_MAJOR)
-#if (NLOHMANN_JSON_VERSION_MAJOR > 3) || \
-    (NLOHMANN_JSON_VERSION_MAJOR == 3 && NLOHMANN_JSON_VERSION_MINOR >= 10)
-  namespace literals = nlohmann::literals::json_literals;
+  namespace literals
+  {
+#if defined(VIX_JSON_ENABLE_LITERALS) && (VIX_JSON_ENABLE_LITERALS == 1)
+    inline Json operator"" _json(const char *s, std::size_t n)
+    {
+      return Json::parse(std::string_view{s, n});
+    }
 #endif
-#endif
+  } // namespace literals
 
 } // namespace vix::json
 

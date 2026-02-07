@@ -146,7 +146,7 @@ namespace vix::json
     try
     {
       Json j = Json::parse(s);
-      return j;
+      return std::optional<Json>{std::move(j)};
     }
     catch (...)
     {
