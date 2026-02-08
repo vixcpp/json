@@ -127,30 +127,16 @@ namespace vix::json
     token(bool b) : v(b) {}
 
     /**
-     * @brief Construct integer from int.
+     * @brief Construct integer from any integral type (except bool).
      *
-     * Special case:
-     * - int is always promoted to int64 to keep a single integer representation.
+     * All integers are stored as int64 to keep a single integer representation.
+     * Note: values outside int64 range will wrap (intentional for this minimal model).
      */
-    token(int i) : v(static_cast<std::int64_t>(i)) {}
-
-    /// @brief Construct integer from std::int64_t.
-    token(std::int64_t i) : v(i) {}
-
-    /**
-     * @brief Construct integer from long long.
-     *
-     * This exists to avoid overload ambiguity on platforms where std::int64_t is long.
-     */
-    token(long long i) : v(static_cast<std::int64_t>(i)) {}
-
-    /**
-     * @brief Construct integer from unsigned long long.
-     *
-     * Stored as int64. Values above INT64_MAX will wrap. This is intentional for
-     * a minimal internal model. If you need full uint64 fidelity, store as string.
-     */
-    token(unsigned long long u) : v(static_cast<std::int64_t>(u)) {}
+    template <class I>
+      requires(std::is_integral_v<I> && !std::is_same_v<std::remove_cvref_t<I>, bool>)
+    token(I i) : v(static_cast<std::int64_t>(i))
+    {
+    }
 
     /**
      * @brief Construct floating point.
@@ -371,10 +357,10 @@ namespace vix::json
     void push_i64(std::int64_t x) { elems.emplace_back(x); }
 
     /// @brief Append long long (promoted to int64).
-    void push_ll(long long x) { elems.emplace_back(x); }
+    void push_ll(long long x) { elems.emplace_back(static_cast<std::int64_t>(x)); }
 
     /// @brief Append unsigned long long (stored as int64).
-    void push_ull(unsigned long long x) { elems.emplace_back(x); }
+    void push_ull(unsigned long long x) { elems.emplace_back(static_cast<std::int64_t>(x)); }
 
     /// @brief Append double.
     void push_f64(double d) { elems.emplace_back(d); }
@@ -799,7 +785,15 @@ namespace vix::json
     void set_int(std::string_view key, int v) { set(key, token(v)); }
 
     /// @brief Set integer value from long long (promoted to int64).
-    void set_ll(std::string_view key, long long v) { set(key, token(v)); }
+    void set_ll(std::string_view key, long long v)
+    {
+      set(key, token(static_cast<std::int64_t>(v)));
+    }
+
+    void set_ull(std::string_view key, unsigned long long v)
+    {
+      set(key, token(static_cast<std::int64_t>(v)));
+    }
 
     /// @brief Ensure value is an object and return it.
     kvs &ensure_object(std::string_view key)

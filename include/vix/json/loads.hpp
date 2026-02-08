@@ -203,7 +203,8 @@ namespace vix::json
   {
     try
     {
-      return load_file(path);
+      auto j = load_file(path);
+      return std::optional<Json>{std::move(j)};
     }
     catch (...)
     {
