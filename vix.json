@@ -1,0 +1,26 @@
+{
+  "name": "json",
+  "namespace": "vix",
+  "version": "0.1.0",
+  "type": "header-only",
+  "include": "include",
+  "license": "MIT",
+  "description": "Header-only JSON library for Vix.cpp: parsing, dumping, conversion, and JPath querying.",
+  "keywords": [
+    "cpp",
+    "vix",
+    "json",
+    "header-only",
+    "parsing",
+    "dumping",
+    "conversion",
+    "jpath"
+  ],
+  "repository": "https://github.com/vixcpp/json",
+  "authors": [
+    {
+      "name": "Gaspard Kirira",
+      "github": "Gaspardkirira"
+    }
+  ]
+}
