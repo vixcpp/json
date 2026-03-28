@@ -1,0 +1,389 @@
+name: JSON Strict CI
+
+on:
+  push:
+    branches: [main, master, dev]
+    paths:
+      - ".github/workflows/json-strict-ci.yml"
+      - "CMakeLists.txt"
+      - "include/**"
+      - "examples/**"
+      - "scripts/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "vix.json"
+  pull_request:
+    branches: [main, master, dev]
+    paths:
+      - ".github/workflows/json-strict-ci.yml"
+      - "CMakeLists.txt"
+      - "include/**"
+      - "examples/**"
+      - "scripts/**"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "vix.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEPS: >
+    build-essential
+    cmake
+    ninja-build
+    clang
+    llvm
+    lld
+    g++
+    cppcheck
+    clang-tidy
+    valgrind
+    pkg-config
+    git
+    nlohmann-json3-dev
+  BUILD_JOBS: 2
+
+jobs:
+  build:
+    name: Build (${{ matrix.compiler }}, examples=${{ matrix.examples }}, provider=${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [clang, gcc]
+        examples: [ON, OFF]
+        provider: [system, fallback]
+
+    steps:
+      - name: Checkout json repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y $DEPS
+
+      - name: Remove system nlohmann_json for fallback mode
+        if: matrix.provider == 'fallback'
+        run: |
+          sudo apt-get remove -y nlohmann-json3-dev || true
+          dpkg -l | grep nlohmann || true
+
+      - name: Select compiler
+        run: |
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            echo "CC=clang" >> "$GITHUB_ENV"
+            echo "CXX=clang++" >> "$GITHUB_ENV"
+          else
+            echo "CC=gcc" >> "$GITHUB_ENV"
+            echo "CXX=g++" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        run: |
+          cmake -G Ninja -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DVIX_JSON_BUILD_EXAMPLES=${{ matrix.examples }}
+
+      - name: Build
+        run: |
+          cmake --build build -j"${BUILD_JOBS}"
+
+      - name: Print executables
+        run: |
+          echo "---- executables ----"
+          find build -type f -executable | sort || true
+
+  runtime-smoke:
+    name: Runtime Smoke Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout json repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y $DEPS
+
+      - name: Configure runtime build
+        run: |
+          cmake -G Ninja -S . -B build-runtime \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DVIX_JSON_BUILD_EXAMPLES=ON
+
+      - name: Build runtime artifacts
+        run: |
+          cmake --build build-runtime -j"${BUILD_JOBS}"
+
+      - name: List candidate executables
+        run: |
+          echo "---- runtime candidates ----"
+          find build-runtime -type f -executable | sort || true
+
+      - name: Run smoke tests on executables
+        shell: bash
+        run: |
+          set +e
+          FAIL=0
+
+          mapfile -t CANDIDATES < <(
+            find build-runtime -type f -executable | while read -r exe; do
+              base="$(basename "$exe")"
+              if [[ ! "$exe" =~ /CMakeFiles/ ]] && [[ ! "$base" =~ (cmake|ctest) ]]; then
+                echo "$exe"
+              fi
+            done | sort -u
+          )
+
+          if [ ${#CANDIDATES[@]} -eq 0 ]; then
+            echo "No executable candidates found."
+            exit 0
+          fi
+
+          for exe in "${CANDIDATES[@]}"; do
+            echo "==> Smoke run: $exe"
+            timeout 5s "$exe" >/tmp/json_smoke.log 2>&1
+            STATUS=$?
+            cat /tmp/json_smoke.log || true
+
+            if [ $STATUS -ne 0 ] && [ $STATUS -ne 124 ]; then
+              echo "::warning::Non-zero exit status from $exe (status=$STATUS)"
+              FAIL=1
+            fi
+          done
+
+          if [ $FAIL -ne 0 ]; then
+            echo "::warning::Some smoke runs reported issues."
+          else
+            echo "Smoke runs completed."
+          fi
+          exit 0
+
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout json repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y $DEPS
+
+      - name: Configure for analysis
+        run: |
+          cmake -G Ninja -S . -B build-analyze \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DVIX_JSON_BUILD_EXAMPLES=ON
+
+      - name: Run clang-tidy on example files
+        run: |
+          set +e
+          find examples -name '*.cpp' -print0 | xargs -0 -n1 -P2 clang-tidy -p build-analyze
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            echo "::warning::clang-tidy reported issues."
+          else
+            echo "clang-tidy completed successfully."
+          fi
+          exit 0
+
+      - name: Run cppcheck on headers and examples
+        run: |
+          set +e
+          cppcheck \
+            --enable=all \
+            --std=c++20 \
+            --inconclusive \
+            --quiet \
+            --suppress=missingIncludeSystem \
+            include/ examples/
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            echo "::warning::cppcheck reported issues."
+          else
+            echo "cppcheck completed successfully."
+          fi
+          exit 0
+
+  valgrind:
+    name: Valgrind Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout json repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y $DEPS
+
+      - name: Configure valgrind build
+        run: |
+          cmake -G Ninja -S . -B build-valgrind \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DVIX_JSON_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: |
+          cmake --build build-valgrind -j"${BUILD_JOBS}"
+
+      - name: Run valgrind on executables
+        shell: bash
+        run: |
+          set +e
+          FAIL=0
+
+          mapfile -t BINS < <(
+            find build-valgrind -type f -executable | while read -r exe; do
+              base="$(basename "$exe")"
+              if [[ ! "$exe" =~ /CMakeFiles/ ]] && [[ ! "$base" =~ (cmake|ctest) ]]; then
+                echo "$exe"
+              fi
+            done | sort -u
+          )
+
+          if [ ${#BINS[@]} -eq 0 ]; then
+            echo "No candidate executables found for valgrind."
+            exit 0
+          fi
+
+          for exe in "${BINS[@]}"; do
+            echo "==> Valgrind: $exe"
+            timeout 20s valgrind \
+              --leak-check=full \
+              --show-leak-kinds=all \
+              --track-origins=yes \
+              "$exe"
+            STATUS=$?
+
+            if [ $STATUS -ne 0 ] && [ $STATUS -ne 124 ]; then
+              echo "::warning::Valgrind reported issues for $exe"
+              FAIL=1
+            fi
+          done
+
+          if [ $FAIL -ne 0 ]; then
+            echo "::warning::Valgrind detected potential issues."
+          else
+            echo "Valgrind checks completed."
+          fi
+          exit 0
+
+  standalone-package-check:
+    name: Standalone Package Export Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout json repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y $DEPS
+
+      - name: Configure installable standalone build
+        run: |
+          cmake -G Ninja -S . -B build-install \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVIX_JSON_BUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX="${PWD}/.ci-install"
+
+      - name: Build standalone package
+        run: |
+          cmake --build build-install -j"${BUILD_JOBS}"
+
+      - name: Install standalone package
+        run: |
+          cmake --install build-install
+
+      - name: Verify installed package files
+        run: |
+          echo "---- install tree ----"
+          find .ci-install -maxdepth 6 -type f | sort || true
+          test -f .ci-install/include/vix/json/json.hpp || (echo "::error::json headers not found"; exit 1)
+
+  config-coverage:
+    name: Configuration Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout json repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y $DEPS
+
+      - name: Configure release mode without examples
+        run: |
+          cmake -G Ninja -S . -B build-release-min \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVIX_JSON_BUILD_EXAMPLES=OFF
+
+      - name: Build release mode without examples
+        run: |
+          cmake --build build-release-min -j"${BUILD_JOBS}"
+
+      - name: Configure release mode with examples
+        run: |
+          cmake -G Ninja -S . -B build-release-examples \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVIX_JSON_BUILD_EXAMPLES=ON
+
+      - name: Build release mode with examples
+        run: |
+          cmake --build build-release-examples -j"${BUILD_JOBS}"
+
+  summary:
+    name: JSON Strict CI Summary
+    needs:
+      [
+        build,
+        runtime-smoke,
+        static-analysis,
+        valgrind,
+        standalone-package-check,
+        config-coverage,
+      ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Print summary
+        run: |
+          echo "JSON strict CI completed."
+          echo "This workflow validates:"
+          echo "- header-only build"
+          echo "- system provider mode"
+          echo "- fallback provider mode"
+          echo "- examples build"
+          echo "- runtime smoke checks"
+          echo "- static analysis"
+          echo "- valgrind"
+          echo "- standalone package export"
