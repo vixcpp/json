@@ -46,6 +46,7 @@ target_include_directories(vix_json INTERFACE
 )
 
 set(_VIX_JSON_PROVIDER "none")
+set(_VIX_JSON_INSTALL_FALLBACK OFF)
 
 find_package(nlohmann_json QUIET CONFIG)
 if (nlohmann_json_FOUND)
@@ -67,15 +68,14 @@ else()
     )
     FetchContent_MakeAvailable(nlohmann_json_fallback)
 
-    if (NOT TARGET nlohmann_json::nlohmann_json)
-      add_library(nlohmann_json::nlohmann_json INTERFACE IMPORTED)
-      target_include_directories(nlohmann_json::nlohmann_json INTERFACE
-        $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>
-      )
-    endif()
+    # Do NOT link fetched nlohmann target into exported install interface.
+    # Just expose its headers during the build.
+    target_include_directories(vix_json INTERFACE
+      $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>
+    )
 
-    target_link_libraries(vix_json INTERFACE nlohmann_json::nlohmann_json)
     set(_VIX_JSON_PROVIDER "nlohmann_json (fetched header-only)")
+    set(_VIX_JSON_INSTALL_FALLBACK ON)
   endif()
 endif()
 
@@ -107,8 +107,17 @@ install(DIRECTORY include/
   FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
+# If using fetched fallback, install nlohmann headers too.
+if (_VIX_JSON_INSTALL_FALLBACK)
+  install(
+    DIRECTORY "${nlohmann_json_fallback_SOURCE_DIR}/single_include/nlohmann"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.hpp"
+  )
+endif()
+
 install(TARGETS vix_json
-  EXPORT VixTargets   # <- join umbrella export-set
+  EXPORT VixTargets
 )
 
 # Status
