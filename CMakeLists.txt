@@ -18,6 +18,10 @@ include(FetchContent)
 add_library(vix_json INTERFACE)
 add_library(vix::json ALIAS vix_json)
 
+set_target_properties(vix_json PROPERTIES
+  EXPORT_NAME json
+)
+
 target_compile_features(vix_json INTERFACE cxx_std_20)
 
 target_include_directories(vix_json INTERFACE
