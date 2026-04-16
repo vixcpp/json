@@ -1,3 +1,4 @@
+# ====================================================================
 #  @file CMakeLists.txt
 #  @author Gaspard Kirira
 #
@@ -5,6 +6,26 @@
 #  https://github.com/vixcpp/vix
 #  Use of this source code is governed by a MIT license
 #  that can be found in the License file.
+#
+# ====================================================================
+# Vix.cpp - Json Module
+# ====================================================================
+# Purpose:
+#   Provides the JSON abstraction layer for Vix using nlohmann_json.
+#   Builds as a header-only INTERFACE target and can reuse an installed
+#   provider or fetch a fallback header-only copy for local builds.
+#
+# Public Targets:
+#   - vix_json   : The actual interface library target
+#   - vix::json  : Namespaced alias for consumers
+#
+# Public Dependencies:
+#   - nlohmann_json
+#
+# Installation/Export:
+#   - Umbrella build exports into: VixTargets
+#   - Standalone build exports into: vix_jsonTargets
+# ====================================================================
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -14,7 +35,25 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(FetchContent)
 
+# --------------------------------------------------------------------
+# Global settings
+# --------------------------------------------------------------------
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# --------------------------------------------------------------------
+# Export set selection
+# --------------------------------------------------------------------
+if (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD)
+  set(VIX_JSON_EXPORT_SET VixTargets)
+else()
+  set(VIX_JSON_EXPORT_SET vix_jsonTargets)
+endif()
+
+# --------------------------------------------------------------------
 # Target
+# --------------------------------------------------------------------
 add_library(vix_json INTERFACE)
 add_library(vix::json ALIAS vix_json)
 
@@ -32,16 +71,26 @@ target_include_directories(vix_json INTERFACE
 set(_VIX_JSON_PROVIDER "none")
 set(_VIX_JSON_INSTALL_FALLBACK OFF)
 
+# --------------------------------------------------------------------
 # Provider resolution
+# Resolution policy:
+#   1) Try installed CONFIG package
+#   2) Try Find-module mode
+#   3) Fallback to fetched header-only copy for local build
+# --------------------------------------------------------------------
 find_package(nlohmann_json QUIET CONFIG)
-if (nlohmann_json_FOUND)
+
+if (nlohmann_json_FOUND AND TARGET nlohmann_json::nlohmann_json)
   target_link_libraries(vix_json INTERFACE nlohmann_json::nlohmann_json)
   set(_VIX_JSON_PROVIDER "nlohmann_json (CONFIG)")
+
 else()
   find_package(nlohmann_json QUIET MODULE)
-  if (nlohmann_json_FOUND)
+
+  if (nlohmann_json_FOUND AND TARGET nlohmann_json::nlohmann_json)
     target_link_libraries(vix_json INTERFACE nlohmann_json::nlohmann_json)
     set(_VIX_JSON_PROVIDER "nlohmann_json (MODULE)")
+
   else()
     message(STATUS "[json] nlohmann_json not found, fetching header-only fallback")
 
@@ -53,8 +102,7 @@ else()
     )
     FetchContent_MakeAvailable(nlohmann_json_fallback)
 
-    # Do not export the fetched target in install interface.
-    # Expose fallback headers only during local build.
+    # Build-time fallback only. Do not export fetched target itself.
     target_include_directories(vix_json INTERFACE
       $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>
     )
@@ -64,11 +112,9 @@ else()
   endif()
 endif()
 
-set_target_properties(vix_json PROPERTIES
-  EXPORT_NAME json
-)
-
+# --------------------------------------------------------------------
 # Examples
+# --------------------------------------------------------------------
 option(VIX_JSON_BUILD_EXAMPLES "Build json examples" OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
@@ -94,55 +140,71 @@ if (VIX_JSON_BUILD_EXAMPLES)
   )
 endif()
 
-# Install headers
-install(DIRECTORY include/
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-  FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
-)
-
-if (_VIX_JSON_INSTALL_FALLBACK)
-  install(
-    DIRECTORY "${nlohmann_json_fallback_SOURCE_DIR}/single_include/nlohmann"
-    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-    FILES_MATCHING PATTERN "*.hpp"
+# --------------------------------------------------------------------
+# Install headers (standalone only)
+# --------------------------------------------------------------------
+if (NOT (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD))
+  install(DIRECTORY include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
   )
+
+  if (_VIX_JSON_INSTALL_FALLBACK)
+    install(
+      DIRECTORY "${nlohmann_json_fallback_SOURCE_DIR}/single_include/nlohmann"
+      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+      FILES_MATCHING PATTERN "*.hpp"
+    )
+  endif()
 endif()
 
-# Install target and export
+# --------------------------------------------------------------------
+# Install target
+# --------------------------------------------------------------------
 install(TARGETS vix_json
-  EXPORT vix_jsonTargets
+  EXPORT ${VIX_JSON_EXPORT_SET}
   INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-install(EXPORT vix_jsonTargets
-  FILE vix_jsonTargets.cmake
-  NAMESPACE vix::
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/vix_json"
-)
+# --------------------------------------------------------------------
+# Standalone package config/export
+# Only for non-umbrella builds
+# --------------------------------------------------------------------
+if (NOT (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD))
 
-# Package config
-configure_package_config_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/vix_jsonConfig.cmake.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfig.cmake"
-  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/vix_json"
-)
+  configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/vix_jsonConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfig.cmake"
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/vix_json"
+  )
 
-write_basic_package_version_file(
-  "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfigVersion.cmake"
-  VERSION ${PROJECT_VERSION}
-  COMPATIBILITY SameMajorVersion
-)
+  write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+  )
 
-install(FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfig.cmake"
-  "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfigVersion.cmake"
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/vix_json"
-)
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/vix_jsonConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/vix_json"
+  )
 
+  install(EXPORT vix_jsonTargets
+    FILE vix_jsonTargets.cmake
+    NAMESPACE vix::
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/vix_json"
+  )
+
+endif()
+
+# --------------------------------------------------------------------
 # Summary
+# --------------------------------------------------------------------
 message(STATUS "------------------------------------------------------")
-message(STATUS "vix_json configured (version ${PROJECT_VERSION})")
-message(STATUS "Provider: ${_VIX_JSON_PROVIDER}")
-message(STATUS "Examples: ${VIX_JSON_BUILD_EXAMPLES}")
-message(STATUS "Install include dir: ${CMAKE_INSTALL_INCLUDEDIR}")
+message(STATUS "vix::json configured (${PROJECT_VERSION})")
+message(STATUS "Export set:       ${VIX_JSON_EXPORT_SET}")
+message(STATUS "Provider:         ${_VIX_JSON_PROVIDER}")
+message(STATUS "Examples:         ${VIX_JSON_BUILD_EXAMPLES}")
+message(STATUS "Install dir:      ${CMAKE_INSTALL_INCLUDEDIR}")
 message(STATUS "------------------------------------------------------")
