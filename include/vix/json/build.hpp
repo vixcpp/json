@@ -13,16 +13,12 @@
  *  Vix.cpp
  */
 
-// Backward-compatible guard alias.
-// Some users might (rarely) rely on VIX_BUILD_HPP in preprocessor checks.
-#ifndef VIX_BUILD_HPP
-#define VIX_BUILD_HPP
-#endif
-
 #ifndef VIX_JSON_BUILD_HPP
 #define VIX_JSON_BUILD_HPP
 
 #include <nlohmann/json.hpp>
+
+#include <concepts>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -93,26 +89,36 @@ namespace vix::json
 
   namespace detail
   {
-    /// Trait: true if K can be viewed as a string key.
+    /**
+     * @brief Concept used to validate JSON object keys.
+     *
+     * A key is accepted when it can be converted to std::string_view.
+     */
     template <class K>
-    using is_key_like = std::bool_constant<std::is_convertible_v<K, std::string_view>>;
+    concept KeyLike = std::convertible_to<K, std::string_view>;
 
     // Kept for potential internal overload extensions.
-    inline void put_pairs(Json &) {}
+    inline void put_pairs(OrderedJson &) {}
 
     /**
      * @brief Internal helper to insert variadic key/value pairs into an object.
      *
-     * @tparam K Key type (must be convertible to std::string_view).
-     * @tparam V Value type (must be JSON-serializable).
-     * @tparam Rest Remaining arguments.
+     * @tparam K Key type, convertible to std::string_view.
+     * @tparam V Value type, JSON-serializable.
+     * @tparam Rest Remaining key/value arguments.
+     *
+     * @param j Target ordered JSON object.
+     * @param k Key to insert.
+     * @param v Value associated with the key.
+     * @param rest Remaining key/value arguments.
      */
-    template <class K, class V, class... Rest,
-              std::enable_if_t<is_key_like<K>::value, int> = 0>
+    template <class K, class V, class... Rest>
+      requires KeyLike<K>
     inline void put_pairs(OrderedJson &j, K &&k, V &&v, Rest &&...rest)
     {
       const std::string key{std::string_view(std::forward<K>(k))};
       j.emplace(key, OrderedJson(std::forward<V>(v)));
+
       if constexpr (sizeof...(rest) > 0)
         put_pairs(j, std::forward<Rest>(rest)...);
     }
