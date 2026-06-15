@@ -264,6 +264,7 @@ namespace vix::json
 
       const std::size_t n = path.size();
       std::size_t i = 0;
+      bool allow_dot_after_bracket = false;
 
       auto flush_key = [&]() -> bool
       {
@@ -284,9 +285,18 @@ namespace vix::json
         {
           if (!flush_key())
           {
+            if (allow_dot_after_bracket)
+            {
+              allow_dot_after_bracket = false;
+              ++i;
+              continue;
+            }
+
             err = "Invalid jpath: empty key segment at offset " + std::to_string(i);
             return false;
           }
+
+          allow_dot_after_bracket = false;
           ++i;
           continue;
         }
@@ -306,6 +316,7 @@ namespace vix::json
             if (!parse_bracket_string_key(path, i, k, err))
               return false;
             out.push_back(Token{Token::Key, std::move(k), static_cast<std::size_t>(-1)});
+            allow_dot_after_bracket = true;
             continue;
           }
 
@@ -334,9 +345,11 @@ namespace vix::json
             return false;
           }
           out.push_back(Token{Token::Index, {}, idx});
+          allow_dot_after_bracket = true;
           continue;
         }
 
+        allow_dot_after_bracket = false;
         cur.push_back(ch);
         ++i;
       }

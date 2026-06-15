@@ -119,25 +119,27 @@ option(VIX_JSON_BUILD_EXAMPLES "Build json examples" OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 if (VIX_JSON_BUILD_EXAMPLES)
-  add_executable(vix_json_quick examples/quick_start.cpp)
-  target_link_libraries(vix_json_quick PRIVATE vix::json)
+  add_subdirectory(examples)
+endif()
 
-  add_executable(vix_json_builders examples/builders.cpp)
-  target_link_libraries(vix_json_builders PRIVATE vix::json)
+# --------------------------------------------------------------------
+# Tests
+# --------------------------------------------------------------------
+option(VIX_JSON_BUILD_TESTS "Build json tests" OFF)
 
-  add_executable(vix_json_jpath examples/jpath.cpp)
-  target_link_libraries(vix_json_jpath PRIVATE vix::json)
+if (VIX_JSON_BUILD_TESTS)
+  include(CTest)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
 
-  add_executable(vix_json_io examples/io.cpp)
-  target_link_libraries(vix_json_io PRIVATE vix::json)
+# --------------------------------------------------------------------
+# Benchmarks
+# --------------------------------------------------------------------
+option(VIX_JSON_BUILD_BENCHMARKS "Build json benchmarks" OFF)
 
-  add_custom_target(vix_json_examples
-    DEPENDS
-      vix_json_quick
-      vix_json_builders
-      vix_json_jpath
-      vix_json_io
-  )
+if (VIX_JSON_BUILD_BENCHMARKS)
+  add_subdirectory(benchmarks)
 endif()
 
 # --------------------------------------------------------------------
@@ -206,5 +208,7 @@ message(STATUS "vix::json configured (${PROJECT_VERSION})")
 message(STATUS "Export set:       ${VIX_JSON_EXPORT_SET}")
 message(STATUS "Provider:         ${_VIX_JSON_PROVIDER}")
 message(STATUS "Examples:         ${VIX_JSON_BUILD_EXAMPLES}")
+message(STATUS "Tests:            ${VIX_JSON_BUILD_TESTS}")
+message(STATUS "Benchmarks:       ${VIX_JSON_BUILD_BENCHMARKS}")
 message(STATUS "Install dir:      ${CMAKE_INSTALL_INCLUDEDIR}")
 message(STATUS "------------------------------------------------------")
