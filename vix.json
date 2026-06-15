@@ -1,7 +1,7 @@
 {
   "name": "json",
   "namespace": "vix",
-  "version": "0.1.0",
+  "version": "1.12.0",
   "type": "header-only",
   "include": "include",
   "license": "MIT",

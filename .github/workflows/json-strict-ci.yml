@@ -8,11 +8,15 @@ on:
       - "CMakeLists.txt"
       - "include/**"
       - "examples/**"
+      - "tests/**"
+      - "benchmarks/**"
+      - "cmake/**"
       - "scripts/**"
       - "README.md"
       - "CHANGELOG.md"
       - "CONTRIBUTING.md"
       - "vix.json"
+
   pull_request:
     branches: [main, master, dev]
     paths:
@@ -20,11 +24,15 @@ on:
       - "CMakeLists.txt"
       - "include/**"
       - "examples/**"
+      - "tests/**"
+      - "benchmarks/**"
+      - "cmake/**"
       - "scripts/**"
       - "README.md"
       - "CHANGELOG.md"
       - "CONTRIBUTING.md"
       - "vix.json"
+
   workflow_dispatch:
 
 permissions:
@@ -49,14 +57,21 @@ env:
 
 jobs:
   build:
-    name: Build (${{ matrix.compiler }}, examples=${{ matrix.examples }}, provider=${{ matrix.provider }})
+    name: Build (${{ matrix.compiler }}, examples=${{ matrix.examples }}, tests=${{ matrix.tests }}, benchmarks=${{ matrix.benchmarks }}, provider=${{ matrix.provider }})
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
         compiler: [clang, gcc]
         examples: [ON, OFF]
+        tests: [ON, OFF]
+        benchmarks: [ON, OFF]
         provider: [system, fallback]
+        exclude:
+          - examples: OFF
+            tests: OFF
+            benchmarks: ON
 
     steps:
       - name: Checkout json repository
@@ -90,11 +105,18 @@ jobs:
           cmake -G Ninja -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DVIX_JSON_BUILD_EXAMPLES=${{ matrix.examples }}
+            -DVIX_JSON_BUILD_EXAMPLES=${{ matrix.examples }} \
+            -DVIX_JSON_BUILD_TESTS=${{ matrix.tests }} \
+            -DVIX_JSON_BUILD_BENCHMARKS=${{ matrix.benchmarks }}
 
       - name: Build
         run: |
           cmake --build build -j"${BUILD_JOBS}"
+
+      - name: Run tests
+        if: matrix.tests == 'ON'
+        run: |
+          ctest --test-dir build --output-on-failure
 
       - name: Print executables
         run: |
@@ -120,18 +142,24 @@ jobs:
         run: |
           cmake -G Ninja -S . -B build-runtime \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DVIX_JSON_BUILD_EXAMPLES=ON
+            -DVIX_JSON_BUILD_EXAMPLES=ON \
+            -DVIX_JSON_BUILD_TESTS=ON \
+            -DVIX_JSON_BUILD_BENCHMARKS=OFF
 
       - name: Build runtime artifacts
         run: |
           cmake --build build-runtime -j"${BUILD_JOBS}"
+
+      - name: Run test suite
+        run: |
+          ctest --test-dir build-runtime --output-on-failure
 
       - name: List candidate executables
         run: |
           echo "---- runtime candidates ----"
           find build-runtime -type f -executable | sort || true
 
-      - name: Run smoke tests on executables
+      - name: Run smoke checks on example executables
         shell: bash
         run: |
           set +e
@@ -140,9 +168,20 @@ jobs:
           mapfile -t CANDIDATES < <(
             find build-runtime -type f -executable | while read -r exe; do
               base="$(basename "$exe")"
-              if [[ ! "$exe" =~ /CMakeFiles/ ]] && [[ ! "$base" =~ (cmake|ctest) ]]; then
-                echo "$exe"
+
+              if [[ "$exe" =~ /CMakeFiles/ ]]; then
+                continue
               fi
+
+              if [[ "$base" =~ (cmake|ctest) ]]; then
+                continue
+              fi
+
+              if [[ "$base" =~ _test$ ]]; then
+                continue
+              fi
+
+              echo "$exe"
             done | sort -u
           )
 
@@ -168,6 +207,7 @@ jobs:
           else
             echo "Smoke runs completed."
           fi
+
           exit 0
 
   static-analysis:
@@ -190,36 +230,47 @@ jobs:
           cmake -G Ninja -S . -B build-analyze \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DVIX_JSON_BUILD_EXAMPLES=ON
+            -DVIX_JSON_BUILD_EXAMPLES=ON \
+            -DVIX_JSON_BUILD_TESTS=ON \
+            -DVIX_JSON_BUILD_BENCHMARKS=ON
 
-      - name: Run clang-tidy on example files
+      - name: Run clang-tidy on source files
         run: |
           set +e
-          find examples -name '*.cpp' -print0 | xargs -0 -n1 -P2 clang-tidy -p build-analyze
+
+          find examples tests benchmarks -name '*.cpp' -print0 \
+            | xargs -0 -r -n1 -P2 clang-tidy -p build-analyze
+
           STATUS=$?
+
           if [ $STATUS -ne 0 ]; then
             echo "::warning::clang-tidy reported issues."
           else
             echo "clang-tidy completed successfully."
           fi
+
           exit 0
 
-      - name: Run cppcheck on headers and examples
+      - name: Run cppcheck on headers, examples, tests, and benchmarks
         run: |
           set +e
+
           cppcheck \
             --enable=all \
             --std=c++20 \
             --inconclusive \
             --quiet \
             --suppress=missingIncludeSystem \
-            include/ examples/
+            include/ examples/ tests/ benchmarks/
+
           STATUS=$?
+
           if [ $STATUS -ne 0 ]; then
             echo "::warning::cppcheck reported issues."
           else
             echo "cppcheck completed successfully."
           fi
+
           exit 0
 
   valgrind:
@@ -242,13 +293,19 @@ jobs:
         run: |
           cmake -G Ninja -S . -B build-valgrind \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DVIX_JSON_BUILD_EXAMPLES=ON
+            -DVIX_JSON_BUILD_EXAMPLES=ON \
+            -DVIX_JSON_BUILD_TESTS=ON \
+            -DVIX_JSON_BUILD_BENCHMARKS=OFF
 
       - name: Build
         run: |
           cmake --build build-valgrind -j"${BUILD_JOBS}"
 
-      - name: Run valgrind on executables
+      - name: Run tests under CTest first
+        run: |
+          ctest --test-dir build-valgrind --output-on-failure
+
+      - name: Run valgrind on test and example executables
         shell: bash
         run: |
           set +e
@@ -257,9 +314,16 @@ jobs:
           mapfile -t BINS < <(
             find build-valgrind -type f -executable | while read -r exe; do
               base="$(basename "$exe")"
-              if [[ ! "$exe" =~ /CMakeFiles/ ]] && [[ ! "$base" =~ (cmake|ctest) ]]; then
-                echo "$exe"
+
+              if [[ "$exe" =~ /CMakeFiles/ ]]; then
+                continue
               fi
+
+              if [[ "$base" =~ (cmake|ctest) ]]; then
+                continue
+              fi
+
+              echo "$exe"
             done | sort -u
           )
 
@@ -274,7 +338,9 @@ jobs:
               --leak-check=full \
               --show-leak-kinds=all \
               --track-origins=yes \
+              --error-exitcode=99 \
               "$exe"
+
             STATUS=$?
 
             if [ $STATUS -ne 0 ] && [ $STATUS -ne 124 ]; then
@@ -288,6 +354,7 @@ jobs:
           else
             echo "Valgrind checks completed."
           fi
+
           exit 0
 
   standalone-package-check:
@@ -310,6 +377,8 @@ jobs:
           cmake -G Ninja -S . -B build-install \
             -DCMAKE_BUILD_TYPE=Release \
             -DVIX_JSON_BUILD_EXAMPLES=OFF \
+            -DVIX_JSON_BUILD_TESTS=OFF \
+            -DVIX_JSON_BUILD_BENCHMARKS=OFF \
             -DCMAKE_INSTALL_PREFIX="${PWD}/.ci-install"
 
       - name: Build standalone package
@@ -324,7 +393,15 @@ jobs:
         run: |
           echo "---- install tree ----"
           find .ci-install -maxdepth 6 -type f | sort || true
-          test -f .ci-install/include/vix/json/json.hpp || (echo "::error::json headers not found"; exit 1)
+
+          test -f .ci-install/include/vix/json/json.hpp || \
+            (echo "::error::json.hpp not found"; exit 1)
+
+          test -f .ci-install/include/vix/json/jpath.hpp || \
+            (echo "::error::jpath.hpp not found"; exit 1)
+
+          test -f .ci-install/include/vix/json/Simple.hpp || \
+            (echo "::error::Simple.hpp not found"; exit 1)
 
   config-coverage:
     name: Configuration Coverage
@@ -341,37 +418,55 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y $DEPS
 
-      - name: Configure release mode without examples
+      - name: Configure release mode without examples/tests/benchmarks
         run: |
           cmake -G Ninja -S . -B build-release-min \
             -DCMAKE_BUILD_TYPE=Release \
-            -DVIX_JSON_BUILD_EXAMPLES=OFF
+            -DVIX_JSON_BUILD_EXAMPLES=OFF \
+            -DVIX_JSON_BUILD_TESTS=OFF \
+            -DVIX_JSON_BUILD_BENCHMARKS=OFF
 
-      - name: Build release mode without examples
+      - name: Build release mode without examples/tests/benchmarks
         run: |
           cmake --build build-release-min -j"${BUILD_JOBS}"
 
-      - name: Configure release mode with examples
+      - name: Configure release mode with examples and tests
         run: |
-          cmake -G Ninja -S . -B build-release-examples \
+          cmake -G Ninja -S . -B build-release-examples-tests \
             -DCMAKE_BUILD_TYPE=Release \
-            -DVIX_JSON_BUILD_EXAMPLES=ON
+            -DVIX_JSON_BUILD_EXAMPLES=ON \
+            -DVIX_JSON_BUILD_TESTS=ON \
+            -DVIX_JSON_BUILD_BENCHMARKS=OFF
 
-      - name: Build release mode with examples
+      - name: Build release mode with examples and tests
         run: |
-          cmake --build build-release-examples -j"${BUILD_JOBS}"
+          cmake --build build-release-examples-tests -j"${BUILD_JOBS}"
+
+      - name: Run release tests
+        run: |
+          ctest --test-dir build-release-examples-tests --output-on-failure
+
+      - name: Configure release mode with benchmarks
+        run: |
+          cmake -G Ninja -S . -B build-release-benchmarks \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVIX_JSON_BUILD_EXAMPLES=ON \
+            -DVIX_JSON_BUILD_TESTS=ON \
+            -DVIX_JSON_BUILD_BENCHMARKS=ON
+
+      - name: Build release mode with benchmarks
+        run: |
+          cmake --build build-release-benchmarks -j"${BUILD_JOBS}"
 
   summary:
     name: JSON Strict CI Summary
     needs:
-      [
-        build,
-        runtime-smoke,
-        static-analysis,
-        valgrind,
-        standalone-package-check,
-        config-coverage,
-      ]
+      - build
+      - runtime-smoke
+      - static-analysis
+      - valgrind
+      - standalone-package-check
+      - config-coverage
     runs-on: ubuntu-latest
 
     steps:
@@ -383,7 +478,10 @@ jobs:
           echo "- system provider mode"
           echo "- fallback provider mode"
           echo "- examples build"
+          echo "- tests build and execution"
+          echo "- benchmarks build"
           echo "- runtime smoke checks"
           echo "- static analysis"
           echo "- valgrind"
           echo "- standalone package export"
+          echo "- configuration coverage"
