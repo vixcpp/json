@@ -1,5 +1,4 @@
 #include <vix/json/json.hpp>
-#include <vix/json.hpp>
 
 #include <cassert>
 #include <string>
@@ -8,7 +7,7 @@ int main()
 {
   using namespace vix::json;
 
-  // Main include exposes Json and OrderedJson aliases
+  // Main module include exposes Json and OrderedJson aliases
   {
     Json j = Json::object();
     OrderedJson oj = OrderedJson::object();
@@ -43,7 +42,7 @@ int main()
     assert(j[1] == "two");
   }
 
-  // build helpers are available from the main include
+  // build helpers are available from the module include
   {
     auto j = o(
         "name", "Vix.cpp",
@@ -58,7 +57,7 @@ int main()
     assert(j["features"][2] == "jpath");
   }
 
-  // loads() and try_loads() are available from the main include
+  // loads() and try_loads() are available from the module include
   {
     Json j = loads(R"({"id": 42, "name": "Ada"})");
 
@@ -70,7 +69,7 @@ int main()
     assert(!bad.has_value());
   }
 
-  // dumps helpers are available from the main include
+  // dumps helpers are available from the module include
   {
     Json j = {
         {"runtime", "vix"},
@@ -85,7 +84,7 @@ int main()
     assert(compact.find("\"runtime\"") != std::string::npos);
   }
 
-  // jpath helpers are available from the main include
+  // jpath helpers are available from the module include
   {
     Json j = obj();
 
@@ -100,7 +99,7 @@ int main()
     assert(*name == "Gaspard");
   }
 
-  // convert helpers are available from the main include
+  // convert helpers are available from the module include
   {
     Json j = {
         {"id", 7},
@@ -118,7 +117,7 @@ int main()
     assert(strict_id == 7);
   }
 
-  // Simple.hpp conversion helpers are available through convert.hpp/json.hpp
+  // Simple conversion helpers are available through convert.hpp/json.hpp
   {
     token t = "hello";
     Json j = to_json(t);
