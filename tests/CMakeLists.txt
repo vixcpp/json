@@ -27,6 +27,19 @@ foreach(test_name IN LISTS VIX_JSON_TEST_TARGETS)
       cxx_std_20
   )
 
+  if (VIX_ENABLE_SANITIZERS AND NOT MSVC)
+    target_compile_options(${test_name}
+      PRIVATE
+        -fno-omit-frame-pointer
+        -fsanitize=address,undefined
+    )
+
+    target_link_options(${test_name}
+      PRIVATE
+        -fsanitize=address,undefined
+    )
+  endif()
+
   add_test(
     NAME ${test_name}
     COMMAND ${test_name}
