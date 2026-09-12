@@ -35,6 +35,11 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(FetchContent)
 
+option(VIX_JSON_FORCE_BUNDLED
+  "Use bundled nlohmann_json headers instead of an installed provider"
+  OFF
+)
+
 # --------------------------------------------------------------------
 # Global settings
 # --------------------------------------------------------------------
@@ -68,7 +73,7 @@ target_include_directories(vix_json INTERFACE
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-set(_VIX_JSON_PROVIDER "none")
+set(_VIX_JSON_PROVIDER "")
 set(_VIX_JSON_INSTALL_FALLBACK OFF)
 
 # --------------------------------------------------------------------
@@ -78,38 +83,51 @@ set(_VIX_JSON_INSTALL_FALLBACK OFF)
 #   2) Try Find-module mode
 #   3) Fallback to fetched header-only copy for local build
 # --------------------------------------------------------------------
-find_package(nlohmann_json QUIET CONFIG)
-
-if (nlohmann_json_FOUND AND TARGET nlohmann_json::nlohmann_json)
-  target_link_libraries(vix_json INTERFACE nlohmann_json::nlohmann_json)
-  set(_VIX_JSON_PROVIDER "nlohmann_json (CONFIG)")
-
-else()
-  find_package(nlohmann_json QUIET MODULE)
+if (NOT VIX_JSON_FORCE_BUNDLED)
+  find_package(nlohmann_json QUIET CONFIG)
 
   if (nlohmann_json_FOUND AND TARGET nlohmann_json::nlohmann_json)
     target_link_libraries(vix_json INTERFACE nlohmann_json::nlohmann_json)
-    set(_VIX_JSON_PROVIDER "nlohmann_json (MODULE)")
+    set(_VIX_JSON_PROVIDER "nlohmann_json (CONFIG)")
 
   else()
-    message(STATUS "[json] nlohmann_json not found, fetching header-only fallback")
+    find_package(nlohmann_json QUIET MODULE)
 
-    FetchContent_Declare(
-      nlohmann_json_fallback
-      GIT_REPOSITORY https://github.com/nlohmann/json.git
-      GIT_TAG        v3.11.3
-      GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(nlohmann_json_fallback)
-
-    # Build-time fallback only. Do not export fetched target itself.
-    target_include_directories(vix_json INTERFACE
-      $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>
-    )
-
-    set(_VIX_JSON_PROVIDER "nlohmann_json (fetched header-only)")
-    set(_VIX_JSON_INSTALL_FALLBACK ON)
+    if (nlohmann_json_FOUND AND TARGET nlohmann_json::nlohmann_json)
+      target_link_libraries(vix_json INTERFACE nlohmann_json::nlohmann_json)
+      set(_VIX_JSON_PROVIDER "nlohmann_json (MODULE)")
+    endif()
   endif()
+endif()
+
+if (NOT _VIX_JSON_PROVIDER)
+  message(STATUS "[json] using bundled nlohmann_json header-only fallback")
+
+  FetchContent_Declare(
+    nlohmann_json_fallback
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+  )
+  FetchContent_MakeAvailable(nlohmann_json_fallback)
+
+  # Do not export the fetched target itself. Its headers are installed below
+  # whenever this provider is selected, including umbrella SDK builds.
+  target_include_directories(vix_json INTERFACE
+    $<BUILD_INTERFACE:${nlohmann_json_fallback_SOURCE_DIR}/single_include>
+  )
+
+  set(_VIX_JSON_PROVIDER "nlohmann_json (bundled header-only)")
+  set(_VIX_JSON_INSTALL_FALLBACK ON)
+endif()
+
+set_property(TARGET vix_json PROPERTY VIX_JSON_BUNDLED ${_VIX_JSON_INSTALL_FALLBACK})
+set(VIX_JSON_BUNDLED ${_VIX_JSON_INSTALL_FALLBACK})
+if (_VIX_JSON_INSTALL_FALLBACK)
+  set_property(TARGET vix_json PROPERTY
+    VIX_JSON_BUNDLED_INCLUDE_DIR
+    "${nlohmann_json_fallback_SOURCE_DIR}/single_include"
+  )
 endif()
 
 # --------------------------------------------------------------------
@@ -143,7 +161,7 @@ if (VIX_JSON_BUILD_BENCHMARKS)
 endif()
 
 # --------------------------------------------------------------------
-# Install headers (standalone only)
+# Install Vix JSON headers (standalone only)
 # --------------------------------------------------------------------
 if (NOT (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD))
   install(DIRECTORY include/
@@ -151,13 +169,14 @@ if (NOT (DEFINED VIX_UMBRELLA_BUILD AND VIX_UMBRELLA_BUILD))
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
   )
 
-  if (_VIX_JSON_INSTALL_FALLBACK)
-    install(
-      DIRECTORY "${nlohmann_json_fallback_SOURCE_DIR}/single_include/nlohmann"
-      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-      FILES_MATCHING PATTERN "*.hpp"
-    )
-  endif()
+endif()
+
+if (_VIX_JSON_INSTALL_FALLBACK)
+  install(
+    DIRECTORY "${nlohmann_json_fallback_SOURCE_DIR}/single_include/nlohmann"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    FILES_MATCHING PATTERN "*.hpp"
+  )
 endif()
 
 # --------------------------------------------------------------------
