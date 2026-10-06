@@ -69,6 +69,131 @@ namespace vix::json
   namespace fs = std::filesystem;
 
   /**
+   * @brief Reusable JSON serialization settings for string and file output.
+   *
+   * @details
+   * - `pretty=true` enables multi-line formatted output using `indent`.
+   * - `pretty=false` enables compact single-line output and ignores `indent`.
+   * - `indent` must be non-negative.
+   * - `ensure_ascii=true` escapes non-ASCII characters.
+   */
+  struct SerializeOptions
+  {
+    bool pretty = true;
+    int indent = 2;
+    bool ensure_ascii = false;
+  };
+
+  /**
+   * @brief Validate serialization options before use.
+   *
+   * @throws std::invalid_argument If `indent` is negative.
+   */
+  inline void validate_serialize_options(const SerializeOptions &options)
+  {
+    if (options.indent < 0)
+      throw std::invalid_argument("JSON serialization indentation must be non-negative");
+  }
+
+  /**
+   * @brief Resolve the effective indent passed to nlohmann::json::dump().
+   *
+   * @details
+   * Compact mode ignores `indent` and always produces a single-line string.
+   */
+  inline int resolve_dump_indent(const SerializeOptions &options)
+  {
+    return options.pretty ? options.indent : -1;
+  }
+
+  /**
+   * @brief Serialize JSON using explicit serialization options.
+   *
+   * @param j JSON value (object/array/etc).
+   * @param options Serialization settings shared with file output.
+   * @return Serialized JSON string.
+   *
+   * @throws std::invalid_argument If `options.indent` is negative.
+   */
+  inline std::string dumps(const Json &j, const SerializeOptions &options)
+  {
+    validate_serialize_options(options);
+    return j.dump(resolve_dump_indent(options), ' ', options.ensure_ascii);
+  }
+
+  /**
+   * @brief Write JSON to a file using explicit serialization options.
+   *
+   * @details
+   * Steps:
+   * 1) Ensure parent directory exists (best-effort).
+   * 2) Write JSON to `<path>.tmp`.
+   * 3) Replace destination by renaming temp file to `<path>`.
+   * 4) If rename fails, fallback to copy + remove.
+   *
+   * @param path Destination file path.
+   * @param j JSON value to write.
+   * @param options Serialization settings shared with string output.
+   *
+   * @throws std::invalid_argument
+   *         If `options.indent` is negative.
+   * @throws std::runtime_error
+   *         If the temp file cannot be written or the final replacement fails.
+   */
+  inline void dump_file(const fs::path &path, const Json &j, const SerializeOptions &options)
+  {
+    validate_serialize_options(options);
+
+    // 1) Ensure directory exists (best-effort)
+    if (path.has_parent_path())
+    {
+      std::error_code ec;
+      fs::create_directories(path.parent_path(), ec);
+    }
+
+    // 2) Write to temp file
+    const fs::path tmp = path.string() + ".tmp";
+    {
+      std::ofstream ofs(tmp, std::ios::binary | std::ios::trunc);
+      if (!ofs)
+        throw std::runtime_error("Cannot open temp file for writing: " + tmp.string());
+
+      ofs.exceptions(std::ofstream::badbit | std::ofstream::failbit);
+
+      try
+      {
+        const auto s = dumps(j, options);
+        ofs.write(s.data(), static_cast<std::streamsize>(s.size()));
+        ofs.flush();
+        if (!ofs)
+          throw std::runtime_error("Failed to flush JSON to temp file: " + tmp.string());
+      }
+      catch (...)
+      {
+        std::error_code ec;
+        fs::remove(tmp, ec);
+        throw;
+      }
+    }
+
+    // 3) Replace destination
+    std::error_code ec;
+    if (fs::exists(path, ec))
+      fs::remove(path, ec); // best-effort
+
+    fs::rename(tmp, path, ec);
+    if (ec)
+    {
+      // fallback: copy + remove
+      std::error_code ec2;
+      fs::copy_file(tmp, path, fs::copy_options::overwrite_existing, ec2);
+      fs::remove(tmp, ec2);
+      if (ec2)
+        throw std::runtime_error("Failed to move JSON temp file to destination: " + path.string());
+    }
+  }
+
+  /**
    * @brief Serialize JSON to a human-readable string (pretty printed).
    *
    * @param j JSON value (object/array/etc).
@@ -81,7 +206,9 @@ namespace vix::json
    */
   inline std::string dumps(const Json &j, int indent = 2, bool ensure_ascii = false)
   {
-    return j.dump(indent, ' ', ensure_ascii);
+    if (indent < 0)
+      return dumps(j, SerializeOptions{false, 2, ensure_ascii});
+    return dumps(j, SerializeOptions{true, indent, ensure_ascii});
   }
 
   /**
@@ -96,7 +223,7 @@ namespace vix::json
    */
   inline std::string dumps_compact(const Json &j, bool ensure_ascii = false)
   {
-    return j.dump(-1, ' ', ensure_ascii);
+    return dumps(j, SerializeOptions{false, 2, ensure_ascii});
   }
 
   /**
@@ -133,53 +260,12 @@ namespace vix::json
    */
   inline void dump_file(const fs::path &path, const Json &j, int indent = 2, bool ensure_ascii = false)
   {
-    // 1) Ensure directory exists (best-effort)
-    if (path.has_parent_path())
+    if (indent < 0)
     {
-      std::error_code ec;
-      fs::create_directories(path.parent_path(), ec);
+      dump_file(path, j, SerializeOptions{false, 2, ensure_ascii});
+      return;
     }
-
-    // 2) Write to temp file
-    const fs::path tmp = path.string() + ".tmp";
-    {
-      std::ofstream ofs(tmp, std::ios::binary | std::ios::trunc);
-      if (!ofs)
-        throw std::runtime_error("Cannot open temp file for writing: " + tmp.string());
-
-      ofs.exceptions(std::ofstream::badbit | std::ofstream::failbit);
-
-      try
-      {
-        const auto s = j.dump(indent, ' ', ensure_ascii);
-        ofs.write(s.data(), static_cast<std::streamsize>(s.size()));
-        ofs.flush();
-        if (!ofs)
-          throw std::runtime_error("Failed to flush JSON to temp file: " + tmp.string());
-      }
-      catch (...)
-      {
-        std::error_code ec;
-        fs::remove(tmp, ec);
-        throw;
-      }
-    }
-
-    // 3) Replace destination
-    std::error_code ec;
-    if (fs::exists(path, ec))
-      fs::remove(path, ec); // best-effort
-
-    fs::rename(tmp, path, ec);
-    if (ec)
-    {
-      // fallback: copy + remove
-      std::error_code ec2;
-      fs::copy_file(tmp, path, fs::copy_options::overwrite_existing, ec2);
-      fs::remove(tmp, ec2);
-      if (ec2)
-        throw std::runtime_error("Failed to move JSON temp file to destination: " + path.string());
-    }
+    dump_file(path, j, SerializeOptions{true, indent, ensure_ascii});
   }
 
   /// @overload Convenience overload for C-string path.
@@ -188,10 +274,22 @@ namespace vix::json
     dump_file(fs::path{path}, j, indent, ensure_ascii);
   }
 
+  /// @overload Convenience overload for C-string path with explicit options.
+  inline void dump_file(const char *path, const Json &j, const SerializeOptions &options)
+  {
+    dump_file(fs::path{path}, j, options);
+  }
+
   /// @overload Convenience overload for std::string path.
   inline void dump_file(const std::string &path, const Json &j, int indent = 2, bool ensure_ascii = false)
   {
     dump_file(fs::path{path}, j, indent, ensure_ascii);
+  }
+
+  /// @overload Convenience overload for std::string path with explicit options.
+  inline void dump_file(const std::string &path, const Json &j, const SerializeOptions &options)
+  {
+    dump_file(fs::path{path}, j, options);
   }
 
 } // namespace vix::json

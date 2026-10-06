@@ -6,6 +6,7 @@ set(VIX_JSON_TEST_TARGETS
   json_build_test
   json_convert_test
   json_dumps_test
+  json_dumps_options_test
   json_include_test
   json_jpath_test
   json_loads_test
