@@ -134,10 +134,7 @@ namespace vix::json
   namespace literals
   {
 #if defined(VIX_JSON_ENABLE_LITERALS) && (VIX_JSON_ENABLE_LITERALS == 1)
-    inline Json operator"" _json(const char *s, std::size_t n)
-    {
-      return Json::parse(std::string_view{s, n});
-    }
+    using nlohmann::literals::operator""_json;
 #endif
   } // namespace literals
 
